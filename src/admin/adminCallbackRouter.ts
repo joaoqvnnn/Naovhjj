@@ -19,7 +19,7 @@ import { showPromotionSettings, setAutoDelete, setViewerExpiration } from './pro
 import { showInactivityConfig, setInactivityDays } from './inactivityConfig';
 import { showTranscriptionConfig, setTranscriptionKey } from './transcriptionConfig';
 import { showGiftCardAdminMenu, createGiftCard, createGiftCardBatch, listGiftCards, viewGiftCard, disableGiftCard, deleteGiftCard } from './giftCardAdmin';
-import { checkUpdates, viewSystemLogs, cleanOldData } from './updatesActions';
+import { checkUpdates, viewSystemLogs, cleanOldData, backupConfig, resetMessages } from './updatesActions';
 import { showSecurityConfig, toggle2FA, toggleDeviceSecurity, toggleStrictDevice, setMaxPasswordAttempts, setBlockDuration } from './securityConfig';
 import { showUsersMenu, listUsers, searchUser, viewUserDetails, editUserBalance, toggleUserBlock, sendMessageToUser } from './userManagementFull';
 import { generateUserHistoryPdf } from '../flows/userHistoryPdf';
@@ -240,6 +240,8 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'admin_updates_check') return checkUpdates(ctx);
   if (callbackData === 'admin_updates_logs') return viewSystemLogs(ctx);
   if (callbackData === 'admin_updates_clean') return cleanOldData(ctx);
+  if (callbackData === 'admin_updates_backup') return backupConfig(ctx);
+  if (callbackData === 'admin_updates_reset') return resetMessages(ctx);
 
   // Fallback
   return ctx.answerCbQuery('Ação não reconhecida.');
