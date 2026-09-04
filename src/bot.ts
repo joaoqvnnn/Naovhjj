@@ -29,6 +29,10 @@ import { downloadMedia } from './utils/mediaDownload';
 import { showRentBot } from './flows/rentBot';
 import { showUsersMenu, listUsers, searchUser, editUserBalance, toggleUserBlock, sendMessageToUser } from './admin/userManagementFull';
 import { generateUserHistoryPdf } from './flows/userHistoryPdf';
+import { showSobre } from './flows/sobre';
+import { showAtendimentoDireto } from './flows/atendimentoDireto';
+import { showSupportConfig, editSupportLink, editBotVersion, editStoreName } from './admin/supportConfig';
+import { showSobreConfig, editSobreContent } from './admin/sobreConfig';
 
 const bot = new Telegraf<Context>(config.botToken);
 
@@ -81,9 +85,23 @@ bot.on('inline_query', handleInlineQuery);
 // ==========================
 // CALLBACKS DE ATENDIMENTO
 // ==========================
-bot.action('menu_suporte', handleAttendanceButton);
+bot.action('menu_suporte', handleAttendanceButton); // IA
 bot.action('support_human', handleHumanButton);
 bot.action('support_exit', handleExitSupport);
+
+// Atendimento direto (vai para o chat privado)
+bot.action('menu_atendimento_direto', async (ctx) => {
+  await ctx.answerCbQuery();
+  await showAtendimentoDireto(ctx);
+});
+
+// ==========================
+// CALLBACKS DE SOBRE
+// ==========================
+bot.action('menu_sobre', async (ctx) => {
+  await ctx.answerCbQuery();
+  await showSobre(ctx);
+});
 
 // ==========================
 // CALLBACKS DE RANKING
@@ -285,6 +303,39 @@ bot.action(/^user_pdf_(\d+)$/, async (ctx) => {
 });
 
 // ==========================
+// CALLBACKS DE SUPORTE E SOBRE (ADMIN)
+// ==========================
+bot.action('admin_config_support', async (ctx) => {
+  await ctx.answerCbQuery();
+  await showSupportConfig(ctx);
+});
+
+bot.action('support_edit_link', async (ctx) => {
+  await ctx.answerCbQuery();
+  await editSupportLink(ctx);
+});
+
+bot.action('support_edit_version', async (ctx) => {
+  await ctx.answerCbQuery();
+  await editBotVersion(ctx);
+});
+
+bot.action('support_edit_store', async (ctx) => {
+  await ctx.answerCbQuery();
+  await editStoreName(ctx);
+});
+
+bot.action('admin_config_sobre', async (ctx) => {
+  await ctx.answerCbQuery();
+  await showSobreConfig(ctx);
+});
+
+bot.action('sobre_edit', async (ctx) => {
+  await ctx.answerCbQuery();
+  await editSobreContent(ctx);
+});
+
+// ==========================
 // CALLBACKS DINÂMICOS GERAIS
 // ==========================
 bot.action('menu_recarregar', async (ctx) => { await goToScreen(ctx, 'recarregar'); });
@@ -315,10 +366,11 @@ bot.action(/.*/, async (ctx) => {
     callbackData.startsWith('ratelimit_') ||
     callbackData.startsWith('giftcard_admin_') ||
     callbackData.startsWith('security_') ||
-    callbackData.startsWith('user_') || // gerência de usuários
-    callbackData === 'users_list' ||
-    callbackData === 'users_search' ||
-    callbackData === 'users_menu'
+    callbackData.startsWith('user_') ||
+    callbackData.startsWith('users_') ||
+    callbackData.startsWith('support_') ||
+    callbackData.startsWith('sobre_') ||
+    callbackData === 'admin_config_users'
   ) {
     await routeAdminCallback(ctx, callbackData);
   } else {
