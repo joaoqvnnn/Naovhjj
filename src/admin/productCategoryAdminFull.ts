@@ -79,4 +79,112 @@ export async function editProduct(ctx: Context, productId: number) {
 
 export async function editProductName(ctx: Context, productId: number) {
   if (!(await isAdmin(ctx))) return;
-  await startCapture
+  await startCapture(ctx, `prod_edit_name_${productId}`, 'Digite o novo nome:', {
+    validate: async (input) => input.trim().length > 0 ? null : 'Nome inválido.',
+    onSuccess: async (ctx, name) => {
+      await prisma.product.update({ where: { id: productId }, data: { name } });
+      await ctx.editMessage('✅ Nome atualizado.');
+      await editProduct(ctx, productId);
+    },
+  });
+}
+
+export async function editProductPrice(ctx: Context, productId: number) {
+  if (!(await isAdmin(ctx))) return;
+  await startCapture(ctx, `prod_edit_price_${productId}`, 'Digite o novo preço:', {
+    validate: async (input) => {
+      const num = parseFloat(input.replace(',', '.'));
+      return isNaN(num) || num <= 0 ? 'Preço inválido.' : null;
+    },
+    onSuccess: async (ctx, price) => {
+      await prisma.product.update({ where: { id: productId }, data: { price: parseFloat(price.replace(',', '.')) } });
+      await ctx.editMessage('✅ Preço atualizado.');
+      await editProduct(ctx, productId);
+    },
+  });
+}
+
+export async function editProductDescription(ctx: Context, productId: number) {
+  if (!(await isAdmin(ctx))) return;
+  await startCapture(ctx, `prod_edit_desc_${productId}`, 'Digite a nova descrição (ou "-" para limpar):', {
+    validate: async () => null,
+    onSuccess: async (ctx, desc) => {
+      const description = desc.trim() === '-' ? '' : desc;
+      await prisma.product.update({ where: { id: productId }, data: { description } });
+      await ctx.editMessage('✅ Descrição atualizada.');
+      await editProduct(ctx, productId);
+    },
+  });
+}
+
+export async function editProductImage(ctx: Context, productId: number) {
+  if (!(await isAdmin(ctx))) return;
+  await startCapture(ctx, `prod_edit_image_${productId}`, 'Envie a URL da imagem (ou "remover"):', {
+    validate: async (input) => input.toLowerCase() === 'remover' ? null : (input.startsWith('http') ? null : 'URL inválida.'),
+    onSuccess: async (ctx, imageUrl) => {
+      const finalUrl = imageUrl.toLowerCase() === 'remover' ? null : imageUrl;
+      await prisma.product.update({ where: { id: productId }, data: { imageUrl: finalUrl } });
+      await ctx.editMessage('✅ Imagem atualizada.');
+      await editProduct(ctx, productId);
+    },
+  });
+}
+
+export async function toggleProduct(ctx: Context, productId: number) {
+  if (!(await isAdmin(ctx))) return;
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product) return ctx.editMessage('Produto não encontrado.');
+  await prisma.product.update({ where: { id: productId }, data: { isActive: !product.isActive } });
+  await ctx.editMessage(`✅ Produto ${!product.isActive ? 'ativado' : 'desativado'}.`);
+  await editProduct(ctx, productId);
+}
+
+export async function deleteProduct(ctx: Context, productId: number) {
+  if (!(await isAdmin(ctx))) return;
+  await prisma.product.delete({ where: { id: productId } });
+  await ctx.editMessage('✅ Produto excluído.');
+  await listProducts(ctx);
+}
+
+export async function listCategories(ctx: Context) {
+  if (!(await isAdmin(ctx))) return;
+  const categories = await prisma.category.findMany({ orderBy: { order: 'asc' } });
+  const text = categories.map(c => `#${c.id} - ${c.name} - ${c.isActive ? 'Ativa' : 'Inativa'}`).join('\n') || 'Nenhuma categoria.';
+
+  const buttons = categories.map(c => [{ text: `✏️ ${c.name}`, callback_data: `cat_edit_${c.id}` }]);
+  buttons.push([{ text: '➕ Nova categoria', callback_data: 'cat_new' }]);
+  buttons.push([{ text: '⏮️ Voltar', callback_data: 'prod_list' }]);
+
+  await ctx.editMessage(`🗂 Categorias\n\n${text}`, { reply_markup: { inline_keyboard: buttons } });
+}
+
+export async function createCategory(ctx: Context) {
+  if (!(await isAdmin(ctx))) return;
+  await startCapture(ctx, 'cat_new_name', 'Digite o nome da categoria:', {
+    validate: async (input) => input.trim().length > 0 ? null : 'Nome inválido.',
+    onSuccess: async (ctx, name) => {
+      await prisma.category.create({ data: { name } });
+      await ctx.editMessage(`✅ Categoria "${name}" criada.`);
+      await listCategories(ctx);
+    },
+  });
+}
+
+export async function editCategoryName(ctx: Context, categoryId: number) {
+  if (!(await isAdmin(ctx))) return;
+  await startCapture(ctx, `cat_edit_name_${categoryId}`, 'Digite o novo nome:', {
+    validate: async (input) => input.trim().length > 0 ? null : 'Nome inválido.',
+    onSuccess: async (ctx, name) => {
+      await prisma.category.update({ where: { id: categoryId }, data: { name } });
+      await ctx.editMessage('✅ Categoria atualizada.');
+      await listCategories(ctx);
+    },
+  });
+}
+
+export async function deleteCategory(ctx: Context, categoryId: number) {
+  if (!(await isAdmin(ctx))) return;
+  await prisma.category.delete({ where: { id: categoryId } });
+  await ctx.editMessage('✅ Categoria excluída.');
+  await listCategories(ctx);
+}
