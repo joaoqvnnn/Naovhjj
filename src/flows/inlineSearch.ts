@@ -2,14 +2,15 @@ import { Context } from '../types/context';
 import prisma from '../database';
 import { formatCurrency } from '../utils/format';
 
-// Handler para inline query
 export async function handleInlineQuery(ctx: Context) {
   const query = ctx.inlineQuery?.query?.trim() || '';
+
   const products = await prisma.product.findMany({
     where: {
       isActive: true,
       name: { contains: query, mode: 'insensitive' },
     },
+    include: { stockUnits: { where: { isSold: false, isReserved: false } } },
     take: 10,
   });
 
@@ -19,7 +20,7 @@ export async function handleInlineQuery(ctx: Context) {
     title: p.name,
     description: `R$ ${p.price} - Estoque: ${p.stockUnits.length}`,
     input_message_content: {
-      message_text: `🎯 ${p.name}\n💲 Valor: ${formatCurrency(p.price)}\n📝 ${p.description || ''}\n\nPara comprar, clique no botão abaixo.`,
+      message_text: `🎯 ${p.name}\n💲 Valor: ${formatCurrency(p.price)}\n📝 ${p.description || ''}\n\nClique abaixo para comprar.`,
     },
     reply_markup: {
       inline_keyboard: [
