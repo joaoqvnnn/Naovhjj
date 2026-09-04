@@ -4,21 +4,16 @@ import config from './config';
 import express from 'express';
 import cors from 'cors';
 import http from 'http';
-
-// Importa rotas web (serão criadas posteriormente, mas já deixamos o servidor pronto)
-// import webRoutes from './web/routes';
+import webRouter from './web'; // novo import
 
 async function startBot() {
   try {
-    // Conecta ao banco de dados
     await prisma.$connect();
     console.log('✅ Banco de dados conectado.');
 
-    // Inicia o bot (long polling)
     await bot.launch();
     console.log('🤖 Bot iniciado com sucesso!');
 
-    // Habilita parada graciosa
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
   } catch (error) {
@@ -35,20 +30,19 @@ async function startWebServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // Rota de saúde para monitoramento
+  // Rota de saúde
   app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // Aqui registraremos as rotas da Web (ativação, saque, termos, etc.)
-  // app.use('/web', webRoutes);
+  // Rotas web (ativação, recuperação de senha, saque, etc.)
+  app.use('/web', webRouter);
 
   const port = process.env.PORT || 3000;
   server.listen(port, () => {
     console.log(`🌐 Servidor Web rodando na porta ${port}`);
   });
 
-  // Encerramento gracioso
   const shutdown = async () => {
     server.close(async () => {
       await prisma.$disconnect();
@@ -60,6 +54,5 @@ async function startWebServer() {
   process.on('SIGTERM', shutdown);
 }
 
-// Inicia ambos
 startBot();
 startWebServer();
