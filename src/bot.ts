@@ -50,11 +50,10 @@ bot.start(async (ctx) => {
     const { applyRegisterBonus } = await import('./services/bonus');
     await applyRegisterBonus(user.id);
   } else {
-    // Atualiza última atividade
     await prisma.user.update({ where: { id: user.id }, data: { lastActivityAt: new Date() } });
   }
 
-  // Verifica se é admin para mostrar menu administrativo pessoal
+  // Se for admin, mostra menu pessoal do admin; caso contrário, menu do cliente
   if (user.role !== 'USER') {
     await goToScreen(ctx, 'admin_start');
   } else {
@@ -258,7 +257,8 @@ bot.action(/.*/, async (ctx) => {
     callbackData.startsWith('admin_updates_') ||
     callbackData.startsWith('wa_af_') ||
     callbackData.startsWith('promo_') ||
-    callbackData.startsWith('ratelimit_')
+    callbackData.startsWith('ratelimit_') ||
+    callbackData.startsWith('giftcard_admin_') // Gift Cards admin
   ) {
     await routeAdminCallback(ctx, callbackData);
   } else {
