@@ -13,17 +13,21 @@ async function startBots() {
     await prisma.$connect();
     console.log('✅ Banco de dados conectado.');
 
+    // Inicia bot principal (loja)
     await bot.launch();
     console.log('🤖 Bot da loja iniciado!');
 
+    // Inicia bot de suporte (se token diferente)
     if (process.env.SUPPORT_BOT_TOKEN && process.env.SUPPORT_BOT_TOKEN !== process.env.BOT_TOKEN) {
       await supportBot.launch();
       console.log('🎧 Bot de suporte iniciado!');
     }
 
-    // Inicia worker de expiração Pix
+    // Inicia worker de expiração de Pix
     startPixExpirationWorker();
+    console.log('⏳ Worker de expiração Pix iniciado.');
 
+    // Encerramento gracioso
     process.once('SIGINT', () => {
       bot.stop('SIGINT');
       supportBot.stop('SIGINT');
@@ -46,10 +50,12 @@ async function startWebServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
+  // Rota de saúde
   app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
+  // Rotas web (ativação, recuperação de senha, saque, termos, etc.)
   app.use('/web', webRouter);
 
   const port = process.env.PORT || 3000;
@@ -57,6 +63,7 @@ async function startWebServer() {
     console.log(`🌐 Servidor Web rodando na porta ${port}`);
   });
 
+  // Encerramento gracioso
   const shutdown = async () => {
     server.close(async () => {
       await prisma.$disconnect();
@@ -68,5 +75,6 @@ async function startWebServer() {
   process.on('SIGTERM', shutdown);
 }
 
+// Inicia todos os serviços
 startBots();
 startWebServer();
