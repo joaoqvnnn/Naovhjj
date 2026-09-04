@@ -20,6 +20,8 @@ import { handleAttendanceButton, handleHumanButton, handleExitSupport } from './
 import { handleSupportMessage } from './flows/aiSupport';
 import { showAffiliatePoints, convertPointsToBalance } from './flows/affiliatePoints';
 import { showNotificationTemplateMenu, viewNotificationTemplate, editNotificationTemplate, resetNotificationTemplate } from './admin/notificationTemplates';
+import { handleActivateCoupon, handleRedeemCoupon, handleResgatarCommand } from './flows/promotions';
+import { showPromotionsMenu, createScheduledPromotion, createCouponPromotion, finalizeScheduledPromotion, listPromotions } from './admin/promotions';
 
 const bot = new Telegraf<Context>(config.botToken);
 
@@ -53,9 +55,10 @@ bot.command('ranking', cmdRanking);
 bot.command('saldo', cmdSaldo);
 bot.command('id', cmdId);
 bot.command('afiliados', cmdAfiliados);
+bot.command('resgatar', handleResgatarCommand);
 
 // ==========================
-// INLINE QUERY (pesquisa)
+// INLINE QUERY (pesquisa de serviços)
 // ==========================
 bot.on('inline_query', handleInlineQuery);
 
@@ -152,6 +155,35 @@ bot.action(/^notiftplreset_(.+)$/, async (ctx) => {
 });
 
 // ==========================
+// CALLBACKS DE PROMOÇÕES E CUPONS (ADMIN)
+// ==========================
+bot.action('promo_menu', async (ctx) => { await showPromotionsMenu(ctx); });
+bot.action('promo_new_scheduled', async (ctx) => { await createScheduledPromotion(ctx); });
+bot.action('promo_new_coupon', async (ctx) => { await createCouponPromotion(ctx); });
+bot.action('promo_list', async (ctx) => { await listPromotions(ctx); });
+bot.action(/^promo_segment_(.+)$/, async (ctx) => {
+  const segment = ctx.match[1];
+  await finalizeScheduledPromotion(ctx, segment);
+});
+
+// ==========================
+// CALLBACKS DE CUPOM (CLIENTE)
+// ==========================
+bot.action(/^activate_coupon_(\d+)$/, async (ctx) => {
+  const couponPromotionId = parseInt(ctx.match[1]);
+  await handleActivateCoupon(ctx, couponPromotionId);
+});
+
+bot.action(/^copy_coupon_(.+)$/, async (ctx) => {
+  await ctx.answerCbQuery('Código copiado!');
+});
+
+bot.action(/^redeem_coupon_(.+)$/, async (ctx) => {
+  const code = ctx.match[1];
+  await handleRedeemCoupon(ctx, code);
+});
+
+// ==========================
 // CALLBACKS DINÂMICOS GERAIS
 // ==========================
 bot.action('menu_recarregar', async (ctx) => { await goToScreen(ctx, 'recarregar'); });
@@ -177,7 +209,8 @@ bot.action(/.*/, async (ctx) => {
     callbackData.startsWith('saque_') ||
     callbackData.startsWith('pixmanual_') ||
     callbackData.startsWith('admin_updates_') ||
-    callbackData.startsWith('wa_af_') // anti-flood WhatsApp
+    callbackData.startsWith('wa_af_') ||
+    callbackData.startsWith('promo_') // promoções admin
   ) {
     await routeAdminCallback(ctx, callbackData);
   } else {
