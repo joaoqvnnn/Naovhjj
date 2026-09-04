@@ -12,8 +12,8 @@ export async function showProduct(ctx: Context, productId: number) {
   });
 
   if (!product || !product.isActive) {
-    await ctx.editMessage('❌ Produto não encontrado ou desativado.', {
-      reply_markup: { inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'voltar_categoria' }]] },
+    await ctx.editMessageText('❌ Produto não encontrado ou desativado.', {
+      reply_markup: { inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'voltar_inicio' }]] },
     });
     return;
   }
@@ -22,16 +22,12 @@ export async function showProduct(ctx: Context, productId: number) {
   const userId = ctx.from!.id;
   const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
 
-  // Registra visualização do produto
   trackProductView(productId, user?.id || userId);
-
-  // Obtém número de pessoas visualizando agora
   const currentViewers = await getCurrentViewers(productId);
 
-  // Busca template personalizado
   const template = await prisma.messageTemplate.findUnique({ where: { key: 'produto' } });
-  let text: string;
 
+  let text = '';
   if (template) {
     text = replaceVars(template.text, {
       nome: product.name,
@@ -42,29 +38,24 @@ export async function showProduct(ctx: Context, productId: number) {
       descricao: product.description || '',
       garantia: product.guarantee || '',
       duracao: product.duration || '',
-      vendidos: 0,
       visualizacoes: currentViewers,
     });
   } else {
-    text = `🔥 OPORTUNIDADE EXCLUSIVA 🔥\n` +
-      `🚀 ${product.name}\n\n` +
-      `🟢 DISPONÍVEL AGORA\n` +
+    text = `🔥 ${product.name}\n\n` +
+      `🟢 Disponível\n` +
       `├ 💵 Preço: ${formatCurrency(product.price)}\n` +
       `├ 💰 Seu Saldo: ${formatCurrency(user?.balance || 0)}\n` +
       `└ 📦 Estoque: ${available}\n\n` +
-      `${product.description ? `📝 Descrição:\n${product.description}\n\n` : ''}` +
-      `📊 Estatísticas em tempo real:\n` +
-      `⚡️ Já foram vendidas 0 unidades!\n` +
-      `👀 ${currentViewers} pessoas estão vendo isso agora.\n\n` +
+      `${product.description ? `📝 ${product.description}\n\n` : ''}` +
       `${product.guarantee ? `🛡 Garantia: ${product.guarantee}\n` : ''}` +
-      `✅ Compra segura. Ao adquirir, concorda com /termos`;
+      `👀 ${currentViewers} pessoas vendo isso agora.`;
   }
 
   const keyboard = {
     inline_keyboard: [
       [{ text: '💳 Comprar', callback_data: `comprar_${product.id}` }],
       [{ text: '🛒 Comprar mais de um', callback_data: `comprar_qtd_${product.id}` }],
-      [{ text: '⏮️ Voltar', callback_data: 'voltar_categoria' }],
+      [{ text: '⏮️ Voltar', callback_data: 'voltar_inicio' }],
     ],
   };
 
@@ -77,6 +68,6 @@ export async function showProduct(ctx: Context, productId: number) {
       reply_markup: keyboard,
     });
   } else {
-    await ctx.editMessage(text, { reply_markup: keyboard });
+    await ctx.editMessageText(text, { reply_markup: keyboard });
   }
 }
