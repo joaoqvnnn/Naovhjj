@@ -1,7 +1,7 @@
 import { Context } from '../types/context';
 import prisma from '../database';
 import { formatCurrency } from '../utils/format';
-import { replaceDynamicVars } from '../utils/dynamicVars';
+import { replaceVars } from '../flows/dynamicVars';
 import { getAvailableStock } from '../services/stock';
 
 export async function showProduct(ctx: Context, productId: number) {
@@ -21,13 +21,11 @@ export async function showProduct(ctx: Context, productId: number) {
   const userId = ctx.from!.id;
   const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
 
-  // Busca template personalizado
   const template = await prisma.messageTemplate.findUnique({ where: { key: 'produto' } });
   let text: string;
 
   if (template) {
-    // Usa template com variáveis dinâmicas
-    text = replaceDynamicVars(template.text, {
+    text = replaceVars(template.text, {
       nome: product.name,
       emoji: product.emoji || '',
       preco: formatCurrency(product.price),
@@ -36,11 +34,8 @@ export async function showProduct(ctx: Context, productId: number) {
       descricao: product.description || '',
       garantia: product.guarantee || '',
       duracao: product.duration || '',
-      vendidos: 0, // pode ser calculado
-      visualizacoes: 0, // pode ser calculado
     });
   } else {
-    // Template padrão
     text = `🔥 OPORTUNIDADE EXCLUSIVA 🔥\n` +
       `🚀 ${product.name}\n\n` +
       `🟢 DISPONÍVEL AGORA\n` +
@@ -48,8 +43,7 @@ export async function showProduct(ctx: Context, productId: number) {
       `├ 💰 Seu Saldo: ${formatCurrency(user?.balance || 0)}\n` +
       `└ 📦 Estoque: ${available}\n\n` +
       `${product.description ? `📝 Descrição:\n${product.description}\n\n` : ''}` +
-      `${product.guarantee ? `🛡 Garantia: ${product.guarantee}\n` : ''}` +
-      `✅ Compra segura. Ao adquirir, concorda com /termos`;
+      `${product.guarantee ? `🛡 Garantia: ${product.guarantee}\n` : ''}`;
   }
 
   const keyboard = {
