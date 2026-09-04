@@ -26,6 +26,7 @@ import { showSobreConfig, editSobreContent } from './sobreConfig';
 import { showSupportConfig, editSupportLink, editBotVersion, editStoreName } from './supportConfig';
 import { listProducts, createProduct, editProduct, editProductName, editProductPrice, editProductDescription, editProductImage, toggleProduct, deleteProduct, listCategories, createCategory, editCategoryName, deleteCategory } from './productCategoryAdminFull';
 import { startCapture } from '../middlewares/capture';
+import { goToScreen } from '../screens/manager';
 
 export async function routeAdminCallback(ctx: Context, callbackData: string) {
   // Dashboard e menus principais
@@ -34,6 +35,10 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'admin_menu_actions') return showActionsMenu(ctx);
   if (callbackData === 'admin_menu_transactions') return showTransactionsMenu(ctx);
   if (callbackData === 'admin_menu_updates') return showUpdatesMenu(ctx);
+
+  // Voltar global
+  if (callbackData === 'voltar_inicio') return goToScreen(ctx, 'start');
+  if (callbackData === 'voltar_admin') return goToScreen(ctx, 'admin_dashboard');
 
   // Configurações gerais
   if (callbackData === 'admin_config_general') return showGeneralConfig(ctx);
