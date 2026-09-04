@@ -26,6 +26,7 @@ import { showPromotionsMenu, createScheduledPromotion, createCouponPromotion, fi
 import { showRateLimitConfig, editRateLimitConfig } from './admin/rateLimitConfig';
 import { transcribeAudio } from './services/transcription';
 import { downloadMedia } from './utils/mediaDownload';
+import { showRentBot } from './flows/rentBot';
 
 const bot = new Telegraf<Context>(config.botToken);
 
@@ -52,7 +53,13 @@ bot.start(async (ctx) => {
     // Atualiza última atividade
     await prisma.user.update({ where: { id: user.id }, data: { lastActivityAt: new Date() } });
   }
-  await goToScreen(ctx, 'start');
+
+  // Verifica se é admin para mostrar menu administrativo pessoal
+  if (user.role !== 'USER') {
+    await goToScreen(ctx, 'admin_start');
+  } else {
+    await goToScreen(ctx, 'start');
+  }
 });
 
 bot.command('pix', cmdPix);
@@ -206,6 +213,24 @@ bot.action(/^ratelimit_edit_(.+)$/, async (ctx) => {
 });
 
 // ==========================
+// CALLBACKS DO MENU ADMIN PESSOAL
+// ==========================
+bot.action('admin_start', async (ctx) => {
+  await ctx.answerCbQuery();
+  await goToScreen(ctx, 'admin_start');
+});
+
+bot.action('admin_rent_bot', async (ctx) => {
+  await ctx.answerCbQuery();
+  await showRentBot(ctx);
+});
+
+bot.action('menu_pesquisar', async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.reply('Use @larizinhastorebot seguido do nome do serviço para pesquisar.');
+});
+
+// ==========================
 // CALLBACKS DINÂMICOS GERAIS
 // ==========================
 bot.action('menu_recarregar', async (ctx) => { await goToScreen(ctx, 'recarregar'); });
@@ -248,7 +273,6 @@ bot.on(['voice', 'audio'], async (ctx) => {
   const userId = ctx.from?.id;
   if (!userId) return;
 
-  // Verifica se transcrição está habilitada
   const transcriptionSetting = await prisma.setting.findUnique({ where: { key: 'transcription_enabled' } });
   if (!transcriptionSetting || !transcriptionSetting.value) {
     await ctx.reply('Transcrição de áudio desativada.');
@@ -273,7 +297,6 @@ bot.on(['voice', 'audio'], async (ctx) => {
       return;
     }
 
-    // Processa o texto transcrito
     if (ctx.session.data?.supportMode) {
       await handleSupportMessage(ctx, text);
     } else {
