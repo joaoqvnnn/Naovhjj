@@ -40,10 +40,20 @@ export async function showNotificationConfig(ctx: Context) {
 
 export async function toggleNotification(ctx: Context, key: string) {
   if (!(await isAdmin(ctx))) return;
+
   const setting = await prisma.setting.findUnique({ where: { key: 'admin_notifications' } });
   const config = setting?.value as any || {};
   config[key] = !config[key];
-  await prisma.setting.upsert({ where: { key: 'admin_notifications' }, update: { value: config }, create: { key: 'admin_notifications', value: config } });
-  await ctx.editMessage('✅ Preferência atualizada.');
-  await showNotificationConfig(ctx);
+
+  await prisma.setting.upsert({
+    where: { key: 'admin_notifications' },
+    update: { value: config },
+    create: { key: 'admin_notifications', value: config },
+  });
+
+  await ctx.editMessage('✅ Preferência atualizada.', {
+    reply_markup: {
+      inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'admin_menu_actions' }]],
+    },
+  });
 }
