@@ -20,6 +20,7 @@ import { showInactivityConfig, setInactivityDays } from './inactivityConfig';
 import { showTranscriptionConfig, setTranscriptionKey } from './transcriptionConfig';
 import { showGiftCardAdminMenu, createGiftCard, createGiftCardBatch, listGiftCards, viewGiftCard, disableGiftCard, deleteGiftCard } from './giftCardAdmin';
 import { checkUpdates, viewSystemLogs, cleanOldData } from './updatesActions';
+import { showSecurityConfig, toggle2FA, toggleDeviceSecurity, toggleStrictDevice, setMaxPasswordAttempts, setBlockDuration } from './securityConfig';
 
 export async function routeAdminCallback(ctx: Context, callbackData: string) {
   // Dashboard e menus principais
@@ -28,6 +29,14 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'admin_menu_actions') return showActionsMenu(ctx);
   if (callbackData === 'admin_menu_transactions') return showTransactionsMenu(ctx);
   if (callbackData === 'admin_menu_updates') return showUpdatesMenu(ctx);
+
+  // Segurança
+  if (callbackData === 'security_menu') return showSecurityConfig(ctx);
+  if (callbackData === 'security_toggle_2fa') return toggle2FA(ctx);
+  if (callbackData === 'security_toggle_device') return toggleDeviceSecurity(ctx);
+  if (callbackData === 'security_toggle_strict') return toggleStrictDevice(ctx);
+  if (callbackData === 'security_set_attempts') return setMaxPasswordAttempts(ctx);
+  if (callbackData === 'security_set_block') return setBlockDuration(ctx);
 
   // Configurações gerais
   if (callbackData === 'admin_config_general') return showGeneralConfig(ctx);
@@ -49,7 +58,7 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'aff_set_min') return setAffiliateMin(ctx);
   if (callbackData === 'aff_set_multiplier') return setAffiliateMultiplier(ctx);
 
-  // Usuários (placeholder)
+  // Usuários
   if (callbackData === 'admin_config_users') return ctx.editMessage('Funcionalidade de usuários em breve.');
 
   // Pix
