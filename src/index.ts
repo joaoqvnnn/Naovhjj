@@ -5,8 +5,10 @@ import config from './config';
 import express from 'express';
 import cors from 'cors';
 import http from 'http';
+import cookieParser from 'cookie-parser';
 import webRouter from './web';
 import { startPixExpirationWorker } from './worker/pixExpirationWorker';
+import { startScheduler } from './services/scheduler';
 
 async function startBots() {
   try {
@@ -26,6 +28,10 @@ async function startBots() {
     // Inicia worker de expiração de Pix
     startPixExpirationWorker();
     console.log('⏳ Worker de expiração Pix iniciado.');
+
+    // Inicia scheduler de promoções agendadas
+    startScheduler();
+    console.log('📅 Scheduler de promoções iniciado.');
 
     // Encerramento gracioso
     process.once('SIGINT', () => {
@@ -49,13 +55,14 @@ async function startWebServer() {
   app.use(cors());
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+  app.use(cookieParser());
 
   // Rota de saúde
   app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // Rotas web (ativação, recuperação de senha, saque, termos, etc.)
+  // Rotas web (autenticação, saque, termos, ativação, etc.)
   app.use('/web', webRouter);
 
   const port = process.env.PORT || 3000;
