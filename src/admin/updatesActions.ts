@@ -3,17 +3,17 @@ import prisma from '../database';
 import { isAdmin } from './userManagement';
 import { logAction } from '../services/logger';
 
-// Verifica atualizações (versão do bot e status)
+// Verifica atualizações (versão e status)
 export async function checkUpdates(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
 
-  const version = '4.1.0'; // pode vir de uma config
+  const version = '4.1.0';
   const lastLog = await prisma.log.findFirst({ orderBy: { createdAt: 'desc' } });
   const lastActivity = lastLog?.createdAt?.toLocaleString('pt-BR') || 'Nenhuma atividade registrada.';
 
   const text = `🔄 ATUALIZAÇÕES\n\n` +
     `Versão atual: ${version}\n` +
-    `Última atividade registrada: ${lastActivity}\n\n` +
+    `Última atividade: ${lastActivity}\n\n` +
     `O sistema está atualizado.`;
 
   await ctx.editMessage(text, {
@@ -52,20 +52,17 @@ export async function viewSystemLogs(ctx: Context) {
   });
 }
 
-// Limpa dados antigos (logs com mais de X dias, pagamentos expirados, etc.)
+// Limpa dados antigos (logs e pagamentos expirados)
 export async function cleanOldData(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
 
-  // Define limite de dias (pode ser configurável)
   const days = 30;
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  // Exclui logs antigos
   const deletedLogs = await prisma.log.deleteMany({
     where: { createdAt: { lt: cutoff } },
   });
 
-  // Exclui pagamentos expirados antigos (opcional)
   const deletedExpiredPayments = await prisma.payment.deleteMany({
     where: { status: 'EXPIRED', createdAt: { lt: cutoff } },
   });
@@ -86,4 +83,44 @@ export async function cleanOldData(ctx: Context) {
       },
     }
   );
+}
+
+// Backup de configurações (exporta JSON)
+export async function backupConfig(ctx: Context) {
+  if (!(await isAdmin(ctx))) return;
+
+  const settings = await prisma.setting.findMany();
+  const templates = await prisma.messageTemplate.findMany();
+  const buttons = await prisma.buttonConfig.findMany();
+
+  const backup = {
+    settings,
+    templates,
+    buttons,
+    exportedAt: new Date().toISOString(),
+  };
+
+  // Envia como documento JSON
+  const bot = (await import('../bot')).default;
+  const fileName = `backup_${Date.now()}.json`;
+  const fileBuffer = Buffer.from(JSON.stringify(backup, null, 2));
+
+  await bot.telegram.sendDocument(ctx.chat!.id, {
+    source: fileBuffer,
+    filename: fileName,
+  });
+
+  await ctx.editMessage('✅ Backup gerado e enviado.');
+}
+
+// Resetar mensagens padrão (remove templates customizados)
+export async function resetMessages(ctx: Context) {
+  if (!(await isAdmin(ctx))) return;
+
+  await prisma.messageTemplate.deleteMany({});
+  await prisma.buttonConfig.deleteMany({});
+
+  await logAction({ action: 'MESSAGES_RESET_TO_DEFAULT' });
+
+  await ctx.editMessage('♻️ Todas as mensagens e botões foram restaurados ao padrão.');
 }
