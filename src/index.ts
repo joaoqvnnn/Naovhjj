@@ -6,21 +6,23 @@ import express from 'express';
 import cors from 'cors';
 import http from 'http';
 import webRouter from './web';
+import { startPixExpirationWorker } from './worker/pixExpirationWorker';
 
 async function startBots() {
   try {
     await prisma.$connect();
     console.log('✅ Banco de dados conectado.');
 
-    // Inicia bot principal (loja)
     await bot.launch();
     console.log('🤖 Bot da loja iniciado!');
 
-    // Inicia bot de suporte (se token diferente)
     if (process.env.SUPPORT_BOT_TOKEN && process.env.SUPPORT_BOT_TOKEN !== process.env.BOT_TOKEN) {
       await supportBot.launch();
       console.log('🎧 Bot de suporte iniciado!');
     }
+
+    // Inicia worker de expiração Pix
+    startPixExpirationWorker();
 
     process.once('SIGINT', () => {
       bot.stop('SIGINT');
