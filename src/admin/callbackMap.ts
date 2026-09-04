@@ -48,4 +48,20 @@ export const adminCallbackMap: Record<string, (ctx: Context, data?: string) => P
   'pixcfg_set_key': (ctx) => import('./pixConfig').then(m => m.setManualPixKey(ctx)),
   'pixcfg_toggle_qr': (ctx) => import('./pixConfig').then(m => m.toggleQrCode(ctx)),
   'pixcfg_toggle_copy': (ctx) => import('./pixConfig').then(m => m.toggleCopyButton(ctx)),
-  'pixcfg
+
+  // Editor de mensagens
+  'admin_actions_messages': (ctx) => import('./templateEditor').then(m => m.showTemplateList(ctx)),
+  'template_view_': (ctx, key) => import('./templateEditor').then(m => m.viewTemplate(ctx, key!)),
+  'template_edit_text_': (ctx, key) => import('./templateEditor').then(m => m.editTemplateText(ctx, key!)),
+  'template_edit_image_': (ctx, key) => import('./templateEditor').then(m => m.editTemplateImage(ctx, key!)),
+  'template_reset_': (ctx, key) => import('./templateEditor').then(m => m.resetTemplate(ctx, key!)),
+
+  // Editor de botões
+  'admin_actions_buttons': (ctx) => import('./buttonEditorFull').then(m => m.showButtonList(ctx)),
+  'btnlist_': (ctx, key) => import('./buttonEditorFull').then(m => m.viewButtonConfig(ctx, key!)),
+  'btnadd_': (ctx, key) => import('./buttonEditorFull').then(m => m.addButton(ctx, key!)),
+  'btnedit_': (ctx, key) => import('./buttonEditorFull').then(m => m.editButton(ctx, key!, 0)),
+  'btnremove_': (ctx, key) => import('./buttonEditorFull').then(m => m.removeButton(ctx, key!, 0)),
+  'btnreorder_': (ctx, key) => import('./buttonEditorFull').then(m => m.reorderButtons(ctx, key!)),
+  'btnreset_': (ctx, key) => import('./buttonEditorFull').then(m => m.resetButtons(ctx, key!)),
+};
