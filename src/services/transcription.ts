@@ -1,10 +1,11 @@
 import axios from 'axios';
 
 /**
- * Serviço de transcrição de áudio usando OpenAI Whisper API.
- * Pode ser substituído por outro provedor, mantendo a interface.
+ * Transcreve um áudio usando a API da OpenAI Whisper.
+ * @param audioBuffer Buffer contendo o áudio binário
+ * @param mimeType Tipo MIME do áudio (ex: audio/ogg, audio/mp3, audio/wav)
+ * @returns Texto transcrito ou null se falhar
  */
-
 export async function transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -13,22 +14,28 @@ export async function transcribeAudio(audioBuffer: Buffer, mimeType: string): Pr
   }
 
   try {
-    const formData = new FormData();
-    const blob = new Blob([audioBuffer], { type: mimeType });
-    formData.append('file', blob, 'audio.ogg');
-    formData.append('model', 'whisper-1');
-    formData.append('language', 'pt');
+    // Cria FormData para envio do arquivo
+    const FormData = require('form-data');
+    const form = new FormData();
+    form.append('file', audioBuffer, {
+      filename: `audio.${mimeType.split('/')[1] || 'ogg'}`,
+      contentType: mimeType,
+    });
+    form.append('model', 'whisper-1');
+    form.append('language', 'pt');
 
-    const response = await axios.post('https://api.openai.com/v1/audio/transcriptions', formData, {
+    const response = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, {
       headers: {
+        ...form.getHeaders(),
         'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'multipart/form-data',
       },
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
     });
 
     return response.data.text?.trim() || null;
   } catch (error) {
-    console.error('Erro na transcrição:', error);
+    console.error('Erro na transcrição de áudio:', error);
     return null;
   }
 }
