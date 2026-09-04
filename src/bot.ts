@@ -8,7 +8,6 @@ import { maintenanceMiddleware } from './middlewares/maintenance';
 import { inactivityMiddleware } from './middlewares/inactivity';
 import { cmdPix, cmdHistorico, cmdAlerta, cmdTermos, cmdRanking, cmdSaldo, cmdId, cmdAfiliados } from './commands';
 import { handleNaturalLanguage } from './flows/aiAssistant';
-import { handleDynamicButton } from './flows/buttonHandlers';
 import { handleInlineQuery } from './flows/inlineSearch';
 import { goToScreen } from './screens/manager';
 import { showRanking } from './flows/ranking';
@@ -24,8 +23,6 @@ import { showNotificationTemplateMenu, viewNotificationTemplate, editNotificatio
 import { handleActivateCoupon, handleRedeemCoupon, handleResgatarCommand } from './flows/promotions';
 import { showPromotionsMenu, createScheduledPromotion, createCouponPromotion, finalizeScheduledPromotion, listPromotions } from './admin/promotions';
 import { showRateLimitConfig, editRateLimitConfig } from './admin/rateLimitConfig';
-import { transcribeAudio } from './services/transcription';
-import { downloadMedia } from './utils/mediaDownload';
 import { showRentBot } from './flows/rentBot';
 import { showUsersMenu, listUsers, searchUser, editUserBalance, toggleUserBlock, sendMessageToUser } from './admin/userManagementFull';
 import { generateUserHistoryPdf } from './flows/userHistoryPdf';
@@ -34,12 +31,12 @@ import { showAtendimentoDireto } from './flows/atendimentoDireto';
 import { showSupportConfig, editSupportLink, editBotVersion, editStoreName } from './admin/supportConfig';
 import { showSobreConfig, editSobreContent } from './admin/sobreConfig';
 import { listProducts, createProduct, editProduct, editProductName, editProductPrice, editProductDescription, editProductImage, toggleProduct, deleteProduct, listCategories, createCategory, editCategoryName, deleteCategory } from './admin/productCategoryAdminFull';
+import { transcribeAudio } from './services/transcription';
+import { downloadMedia } from './utils/mediaDownload';
 
 const bot = new Telegraf<Context>(config.botToken);
 
-// ==========================
-// MIDDLEWARES GLOBAIS
-// ==========================
+// Middlewares
 bot.use(sessionMiddleware);
 bot.use(blockedUserMiddleware);
 bot.use(maintenanceMiddleware);
@@ -47,7 +44,7 @@ bot.use(inactivityMiddleware);
 bot.use(captureMiddleware);
 
 // ==========================
-// COMANDOS
+// COMANDO /start
 // ==========================
 bot.start(async (ctx) => {
   const userId = ctx.from.id;
@@ -58,28 +55,38 @@ bot.start(async (ctx) => {
     await prisma.user.update({ where: { id: user.id }, data: { lastActivityAt: new Date() } });
   }
 
-  await ctx.reply(
-    `🎬 Bem-vindo à Larizinha Store!\n\n` +
-    `💠 Seus Dados:\n` +
-    `├ 👤 ID: ${userId}\n` +
-    `└ 💰 Saldo: R$ ${user.balance.toString()}\n\n` +
-    `Use os botões abaixo para navegar.`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🛍️ Comprar Produtos', callback_data: 'menu_comprar' }],
-          [{ text: '👤 Meu Perfil', callback_data: 'menu_perfil' }],
-          [{ text: '💰 Recarregar', callback_data: 'menu_recarregar' }],
-          [{ text: '🤝 Afiliados', callback_data: 'menu_afiliados' }],
-          [{ text: '🏆 Ranking', callback_data: 'menu_ranking' }],
-          [{ text: 'ℹ️ Sobre', callback_data: 'menu_sobre' }],
-        ],
-      },
-    }
-  );
+  const template = await prisma.messageTemplate.findUnique({ where: { key: 'start' } });
+
+  let text = '';
+  if (template) {
+    text = template.text
+      .replace(/\{telegram_id\}/g, String(userId))
+      .replace(/\{saldo\}/g, user.balance.toString());
+  } else {
+    text = `🎬 Bem-vindo à Larizinha Store!\n\n` +
+      `💠 Seus Dados:\n` +
+      `├ 👤 ID: ${userId}\n` +
+      `└ 💰 Saldo: R$ ${user.balance.toString()}\n\n` +
+      `Use os botões abaixo para navegar.`;
+  }
+
+  await ctx.replyWithHTML(text, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🛍️ Comprar Produtos', callback_data: 'menu_comprar' }],
+        [{ text: '👤 Meu Perfil', callback_data: 'menu_perfil' }],
+        [{ text: '💰 Recarregar', callback_data: 'menu_recarregar' }],
+        [{ text: '🤝 Afiliados', callback_data: 'menu_afiliados' }],
+        [{ text: '🏆 Ranking', callback_data: 'menu_ranking' }],
+        [{ text: 'ℹ️ Sobre', callback_data: 'menu_sobre' }],
+      ],
+    },
+  });
 });
 
-// Comando admin
+// ==========================
+// COMANDO /admin
+// ==========================
 bot.command('admin', async (ctx) => {
   const userId = ctx.from.id;
   const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
@@ -90,6 +97,7 @@ bot.command('admin', async (ctx) => {
   }
 });
 
+// Comandos
 bot.command('pix', cmdPix);
 bot.command('historico', cmdHistorico);
 bot.command('alerta', cmdAlerta);
@@ -100,14 +108,10 @@ bot.command('id', cmdId);
 bot.command('afiliados', cmdAfiliados);
 bot.command('resgatar', handleResgatarCommand);
 
-// ==========================
-// INLINE QUERY (pesquisa de serviços)
-// ==========================
+// Inline query
 bot.on('inline_query', handleInlineQuery);
 
-// ==========================
-// CALLBACKS DO MENU PRINCIPAL
-// ==========================
+// Callbacks do menu principal
 bot.action('menu_comprar', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'comprar'); });
 bot.action('menu_perfil', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'perfil'); });
 bot.action('menu_recarregar', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'recarregar'); });
@@ -115,37 +119,25 @@ bot.action('menu_afiliados', async (ctx) => { await ctx.answerCbQuery(); await g
 bot.action('menu_ranking', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'ranking'); });
 bot.action('menu_sobre', async (ctx) => { await ctx.answerCbQuery(); await showSobre(ctx); });
 
-// ==========================
-// CALLBACKS DE ATENDIMENTO
-// ==========================
+// Atendimento
 bot.action('menu_suporte', handleAttendanceButton);
 bot.action('support_human', handleHumanButton);
 bot.action('support_exit', handleExitSupport);
+bot.action('menu_atendimento_direto', async (ctx) => { await ctx.answerCbQuery(); await showAtendimentoDireto(ctx); });
 
-bot.action('menu_atendimento_direto', async (ctx) => {
-  await ctx.answerCbQuery();
-  await showAtendimentoDireto(ctx);
-});
-
-// ==========================
-// CALLBACKS DE RANKING
-// ==========================
+// Rankings
 bot.action('rank_servicos', async (ctx) => { await showRanking(ctx, 'servicos'); });
 bot.action('rank_recargas', async (ctx) => { await showRanking(ctx, 'recargas'); });
 bot.action('rank_saldo', async (ctx) => { await showRanking(ctx, 'saldo'); });
 bot.action('rank_compras', async (ctx) => { await showRanking(ctx, 'compras'); });
 
-// ==========================
-// CALLBACKS DE COMPRA
-// ==========================
+// Compra
 bot.action(/^comprar_(\d+)$/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
   await showProduct(ctx, productId);
 });
 
-// ==========================
-// CALLBACKS DE ALERTAS
-// ==========================
+// Alertas
 bot.action(/^alert_toggle_(\d+)$/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
   await toggleAlert(ctx, productId);
@@ -157,295 +149,102 @@ bot.action(/^alerts_page_(\d+)$/, async (ctx) => {
   await showAlertsScreen(ctx, page);
 });
 
-// ==========================
-// CALLBACKS DE ALTERAÇÃO DE DADOS
-// ==========================
+// Alterar WhatsApp
 bot.action('alterar_whatsapp', async (ctx) => {
   await ctx.answerCbQuery();
   await startChangeWhatsApp(ctx);
 });
 
-// ==========================
-// CALLBACKS DE ENTREGA POR WHATSAPP
-// ==========================
+// Entrega WhatsApp
 bot.action(/^entregar_whatsapp_(\d+)$/, async (ctx) => {
   const orderId = parseInt(ctx.match[1]);
   await startWhatsAppDelivery(ctx, orderId);
 });
 
-// ==========================
-// CALLBACKS DE PONTOS DE AFILIADO
-// ==========================
-bot.action('menu_pontos', async (ctx) => {
-  await ctx.answerCbQuery();
-  await showAffiliatePoints(ctx);
-});
+// Pontos
+bot.action('menu_pontos', async (ctx) => { await ctx.answerCbQuery(); await showAffiliatePoints(ctx); });
+bot.action('aff_convert_points', async (ctx) => { await ctx.answerCbQuery(); await convertPointsToBalance(ctx); });
 
-bot.action('aff_convert_points', async (ctx) => {
-  await ctx.answerCbQuery();
-  await convertPointsToBalance(ctx);
-});
+// Notificações admin
+bot.action('admin_actions_notifications', async (ctx) => { await ctx.answerCbQuery(); await showNotificationTemplateMenu(ctx); });
+bot.action(/^notiftpl_(.+)$/, async (ctx) => { const key = ctx.match[1]; await ctx.answerCbQuery(); await viewNotificationTemplate(ctx, key); });
+bot.action(/^notiftpledit_(.+)$/, async (ctx) => { const key = ctx.match[1]; await ctx.answerCbQuery(); await editNotificationTemplate(ctx, key); });
+bot.action(/^notiftplreset_(.+)$/, async (ctx) => { const key = ctx.match[1]; await ctx.answerCbQuery(); await resetNotificationTemplate(ctx, key); });
 
-// ==========================
-// CALLBACKS DE NOTIFICAÇÕES ADMIN
-// ==========================
-bot.action('admin_actions_notifications', async (ctx) => {
-  await ctx.answerCbQuery();
-  await showNotificationTemplateMenu(ctx);
-});
-
-bot.action(/^notiftpl_(.+)$/, async (ctx) => {
-  const eventKey = ctx.match[1];
-  await ctx.answerCbQuery();
-  await viewNotificationTemplate(ctx, eventKey);
-});
-
-bot.action(/^notiftpledit_(.+)$/, async (ctx) => {
-  const eventKey = ctx.match[1];
-  await ctx.answerCbQuery();
-  await editNotificationTemplate(ctx, eventKey);
-});
-
-bot.action(/^notiftplreset_(.+)$/, async (ctx) => {
-  const eventKey = ctx.match[1];
-  await ctx.answerCbQuery();
-  await resetNotificationTemplate(ctx, eventKey);
-});
-
-// ==========================
-// CALLBACKS DE PROMOÇÕES E CUPONS (ADMIN)
-// ==========================
+// Promoções
 bot.action('promo_menu', async (ctx) => { await showPromotionsMenu(ctx); });
 bot.action('promo_new_scheduled', async (ctx) => { await createScheduledPromotion(ctx); });
 bot.action('promo_new_coupon', async (ctx) => { await createCouponPromotion(ctx); });
 bot.action('promo_list', async (ctx) => { await listPromotions(ctx); });
-bot.action(/^promo_segment_(.+)$/, async (ctx) => {
-  const segment = ctx.match[1];
-  await finalizeScheduledPromotion(ctx, segment);
-});
+bot.action(/^promo_segment_(.+)$/, async (ctx) => { const segment = ctx.match[1]; await finalizeScheduledPromotion(ctx, segment); });
 
-// ==========================
-// CALLBACKS DE CUPOM (CLIENTE)
-// ==========================
-bot.action(/^activate_coupon_(\d+)$/, async (ctx) => {
-  const couponPromotionId = parseInt(ctx.match[1]);
-  await handleActivateCoupon(ctx, couponPromotionId);
-});
+// Cupons
+bot.action(/^activate_coupon_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await handleActivateCoupon(ctx, id); });
+bot.action(/^copy_coupon_(.+)$/, async (ctx) => { await ctx.answerCbQuery('Código copiado!'); });
+bot.action(/^redeem_coupon_(.+)$/, async (ctx) => { const code = ctx.match[1]; await handleRedeemCoupon(ctx, code); });
 
-bot.action(/^copy_coupon_(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery('Código copiado!');
-});
+// Rate limit
+bot.action('admin_actions_ratelimit', async (ctx) => { await ctx.answerCbQuery(); await showRateLimitConfig(ctx); });
+bot.action(/^ratelimit_edit_(.+)$/, async (ctx) => { const action = ctx.match[1]; await ctx.answerCbQuery(); await editRateLimitConfig(ctx, action); });
 
-bot.action(/^redeem_coupon_(.+)$/, async (ctx) => {
-  const code = ctx.match[1];
-  await handleRedeemCoupon(ctx, code);
-});
+// Menu admin pessoal
+bot.action('admin_start', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'admin_start'); });
+bot.action('admin_rent_bot', async (ctx) => { await ctx.answerCbQuery(); await showRentBot(ctx); });
+bot.action('menu_pesquisar', async (ctx) => { await ctx.answerCbQuery(); await ctx.reply('Use @larizinhastorebot seguido do nome do serviço para pesquisar.'); });
 
-// ==========================
-// CALLBACKS DE RATE LIMIT CONFIG (ADMIN)
-// ==========================
-bot.action('admin_actions_ratelimit', async (ctx) => {
-  await ctx.answerCbQuery();
-  await showRateLimitConfig(ctx);
-});
-
-bot.action(/^ratelimit_edit_(.+)$/, async (ctx) => {
-  const action = ctx.match[1];
-  await ctx.answerCbQuery();
-  await editRateLimitConfig(ctx, action);
-});
-
-// ==========================
-// CALLBACKS DO MENU ADMIN PESSOAL
-// ==========================
-bot.action('admin_start', async (ctx) => {
-  await ctx.answerCbQuery();
-  await goToScreen(ctx, 'admin_start');
-});
-
-bot.action('admin_rent_bot', async (ctx) => {
-  await ctx.answerCbQuery();
-  await showRentBot(ctx);
-});
-
-bot.action('menu_pesquisar', async (ctx) => {
-  await ctx.answerCbQuery();
-  await ctx.reply('Use @larizinhastorebot seguido do nome do serviço para pesquisar.');
-});
-
-// ==========================
-// CALLBACKS DE GERENCIAMENTO DE USUÁRIOS
-// ==========================
-bot.action('admin_config_users', async (ctx) => {
-  await ctx.answerCbQuery();
-  await showUsersMenu(ctx);
-});
-
-bot.action('users_menu', async (ctx) => {
-  await ctx.answerCbQuery();
-  await showUsersMenu(ctx);
-});
-
-bot.action('users_list', async (ctx) => {
-  await ctx.answerCbQuery();
-  await listUsers(ctx);
-});
-
-bot.action(/^users_page_(\d+)$/, async (ctx) => {
-  const page = parseInt(ctx.match[1]);
-  await listUsers(ctx, page);
-});
-
+// Gerenciamento de usuários
+bot.action('admin_config_users', async (ctx) => { await ctx.answerCbQuery(); await showUsersMenu(ctx); });
+bot.action('users_menu', async (ctx) => { await ctx.answerCbQuery(); await showUsersMenu(ctx); });
+bot.action('users_list', async (ctx) => { await ctx.answerCbQuery(); await listUsers(ctx); });
+bot.action(/^users_page_(\d+)$/, async (ctx) => { const page = parseInt(ctx.match[1]); await listUsers(ctx, page); });
 bot.action('users_search', async (ctx) => {
   const { startCapture } = await import('./middlewares/capture');
   await startCapture(ctx, 'users_search_term', 'Digite o ID, Telegram ID ou username:', {
     validate: async (input) => input.trim().length > 0 ? null : 'Digite algo.',
-    onSuccess: async (ctx, term) => {
-      await searchUser(ctx, term);
-    },
+    onSuccess: async (ctx, term) => searchUser(ctx, term),
   });
 });
+bot.action(/^user_edit_balance_(\d+)$/, async (ctx) => { const userId = parseInt(ctx.match[1]); await editUserBalance(ctx, userId); });
+bot.action(/^user_toggle_block_(\d+)$/, async (ctx) => { const userId = parseInt(ctx.match[1]); await toggleUserBlock(ctx, userId); });
+bot.action(/^user_message_(\d+)$/, async (ctx) => { const userId = parseInt(ctx.match[1]); await sendMessageToUser(ctx, userId); });
+bot.action(/^user_pdf_(\d+)$/, async (ctx) => { const userId = parseInt(ctx.match[1]); await generateUserHistoryPdf(ctx, userId); });
 
-bot.action(/^user_edit_balance_(\d+)$/, async (ctx) => {
-  const userId = parseInt(ctx.match[1]);
-  await editUserBalance(ctx, userId);
-});
+// Suporte e Sobre
+bot.action('admin_config_support', async (ctx) => { await ctx.answerCbQuery(); await showSupportConfig(ctx); });
+bot.action('support_edit_link', async (ctx) => { await ctx.answerCbQuery(); await editSupportLink(ctx); });
+bot.action('support_edit_version', async (ctx) => { await ctx.answerCbQuery(); await editBotVersion(ctx); });
+bot.action('support_edit_store', async (ctx) => { await ctx.answerCbQuery(); await editStoreName(ctx); });
+bot.action('admin_config_sobre', async (ctx) => { await ctx.answerCbQuery(); await showSobreConfig(ctx); });
+bot.action('sobre_edit', async (ctx) => { await ctx.answerCbQuery(); await editSobreContent(ctx); });
 
-bot.action(/^user_toggle_block_(\d+)$/, async (ctx) => {
-  const userId = parseInt(ctx.match[1]);
-  await toggleUserBlock(ctx, userId);
-});
+// Produtos e Categorias
+bot.action('admin_config_products', async (ctx) => { await ctx.answerCbQuery(); await listProducts(ctx); });
+bot.action('prod_list', async (ctx) => { await ctx.answerCbQuery(); await listProducts(ctx); });
+bot.action(/^products_page_(\d+)$/, async (ctx) => { const page = parseInt(ctx.match[1]); await listProducts(ctx, page); });
+bot.action('prod_new', async (ctx) => { await ctx.answerCbQuery(); await createProduct(ctx); });
+bot.action(/^prod_edit_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await editProduct(ctx, id); });
+bot.action(/^prod_edit_name_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await editProductName(ctx, id); });
+bot.action(/^prod_edit_price_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await editProductPrice(ctx, id); });
+bot.action(/^prod_edit_desc_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await editProductDescription(ctx, id); });
+bot.action(/^prod_edit_image_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await editProductImage(ctx, id); });
+bot.action(/^prod_toggle_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await toggleProduct(ctx, id); });
+bot.action(/^prod_delete_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await deleteProduct(ctx, id); });
+bot.action('cat_menu', async (ctx) => { await ctx.answerCbQuery(); await listCategories(ctx); });
+bot.action('cat_new', async (ctx) => { await ctx.answerCbQuery(); await createCategory(ctx); });
+bot.action(/^cat_edit_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await editCategoryName(ctx, id); });
+bot.action(/^cat_delete_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await deleteCategory(ctx, id); });
 
-bot.action(/^user_message_(\d+)$/, async (ctx) => {
-  const userId = parseInt(ctx.match[1]);
-  await sendMessageToUser(ctx, userId);
-});
-
-bot.action(/^user_pdf_(\d+)$/, async (ctx) => {
-  const userId = parseInt(ctx.match[1]);
-  await generateUserHistoryPdf(ctx, userId);
-});
-
-// ==========================
-// CALLBACKS DE SUPORTE E SOBRE (ADMIN)
-// ==========================
-bot.action('admin_config_support', async (ctx) => {
-  await ctx.answerCbQuery();
-  await showSupportConfig(ctx);
-});
-
-bot.action('support_edit_link', async (ctx) => {
-  await ctx.answerCbQuery();
-  await editSupportLink(ctx);
-});
-
-bot.action('support_edit_version', async (ctx) => {
-  await ctx.answerCbQuery();
-  await editBotVersion(ctx);
-});
-
-bot.action('support_edit_store', async (ctx) => {
-  await ctx.answerCbQuery();
-  await editStoreName(ctx);
-});
-
-bot.action('admin_config_sobre', async (ctx) => {
-  await ctx.answerCbQuery();
-  await showSobreConfig(ctx);
-});
-
-bot.action('sobre_edit', async (ctx) => {
-  await ctx.answerCbQuery();
-  await editSobreContent(ctx);
-});
-
-// ==========================
-// CALLBACKS DE PRODUTOS E CATEGORIAS (ADMIN)
-// ==========================
-bot.action('admin_config_products', async (ctx) => {
-  await ctx.answerCbQuery();
-  await listProducts(ctx);
-});
-
-bot.action('prod_list', async (ctx) => {
-  await ctx.answerCbQuery();
-  await listProducts(ctx);
-});
-
-bot.action(/^products_page_(\d+)$/, async (ctx) => {
-  const page = parseInt(ctx.match[1]);
-  await listProducts(ctx, page);
-});
-
-bot.action('prod_new', async (ctx) => {
-  await ctx.answerCbQuery();
-  await createProduct(ctx);
-});
-
-bot.action(/^prod_edit_(\d+)$/, async (ctx) => {
-  const productId = parseInt(ctx.match[1]);
-  await editProduct(ctx, productId);
-});
-
-bot.action(/^prod_edit_name_(\d+)$/, async (ctx) => {
-  const productId = parseInt(ctx.match[1]);
-  await editProductName(ctx, productId);
-});
-
-bot.action(/^prod_edit_price_(\d+)$/, async (ctx) => {
-  const productId = parseInt(ctx.match[1]);
-  await editProductPrice(ctx, productId);
-});
-
-bot.action(/^prod_edit_desc_(\d+)$/, async (ctx) => {
-  const productId = parseInt(ctx.match[1]);
-  await editProductDescription(ctx, productId);
-});
-
-bot.action(/^prod_edit_image_(\d+)$/, async (ctx) => {
-  const productId = parseInt(ctx.match[1]);
-  await editProductImage(ctx, productId);
-});
-
-bot.action(/^prod_toggle_(\d+)$/, async (ctx) => {
-  const productId = parseInt(ctx.match[1]);
-  await toggleProduct(ctx, productId);
-});
-
-bot.action(/^prod_delete_(\d+)$/, async (ctx) => {
-  const productId = parseInt(ctx.match[1]);
-  await deleteProduct(ctx, productId);
-});
-
-bot.action('cat_menu', async (ctx) => {
-  await ctx.answerCbQuery();
-  await listCategories(ctx);
-});
-
-bot.action('cat_new', async (ctx) => {
-  await ctx.answerCbQuery();
-  await createCategory(ctx);
-});
-
-bot.action(/^cat_edit_(\d+)$/, async (ctx) => {
-  const categoryId = parseInt(ctx.match[1]);
-  await editCategoryName(ctx, categoryId);
-});
-
-bot.action(/^cat_delete_(\d+)$/, async (ctx) => {
-  const categoryId = parseInt(ctx.match[1]);
-  await deleteCategory(ctx, categoryId);
-});
-
-// ==========================
-// CALLBACKS DINÂMICOS GERAIS
-// ==========================
-bot.action('menu_recarregar', async (ctx) => { await goToScreen(ctx, 'recarregar'); });
+// Voltar
 bot.action('voltar_inicio', async (ctx) => { await goToScreen(ctx, 'start'); });
+bot.action('voltar_admin', async (ctx) => { await goToScreen(ctx, 'admin_dashboard'); });
 
-// ==========================
-// ROTEAMENTO ADMIN
-// ==========================
+// Captura cancel
+bot.action('capture_cancel', async (ctx) => {
+  const { captureCancelCallback } = await import('./middlewares/capture');
+  await captureCancelCallback(ctx);
+});
+
+// Roteamento admin
 bot.action(/.*/, async (ctx) => {
   const callbackData = ctx.callbackQuery.data;
   if (
@@ -482,9 +281,7 @@ bot.action(/.*/, async (ctx) => {
   }
 });
 
-// ==========================
-// HANDLER DE ÁUDIO (TELEGRAM)
-// ==========================
+// Áudio
 bot.on(['voice', 'audio'], async (ctx) => {
   const userId = ctx.from?.id;
   if (!userId) return;
@@ -524,9 +321,7 @@ bot.on(['voice', 'audio'], async (ctx) => {
   }
 });
 
-// ==========================
-// MENSAGENS DE TEXTO
-// ==========================
+// Mensagens de texto
 bot.on('text', async (ctx) => {
   if (ctx.session.data?.supportMode && ctx.message && 'text' in ctx.message) {
     await handleSupportMessage(ctx, ctx.message.text);
@@ -537,9 +332,7 @@ bot.on('text', async (ctx) => {
   }
 });
 
-// ==========================
-// TRATAMENTO DE ERROS
-// ==========================
+// Tratamento de erros
 bot.catch((err, ctx) => {
   console.error(`Erro para ${ctx.from?.id}:`, err);
   ctx.reply('Ocorreu um erro. Tente novamente.');
