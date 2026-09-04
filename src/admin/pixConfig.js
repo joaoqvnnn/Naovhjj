@@ -111,7 +111,7 @@ export async function toggleCopyButton(ctx: Context) {
   await showPixConfig(ctx);
 }
 
-// Define expiração
+// Define expiração (minutos) - editável
 export async function setExpiration(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
   await startCapture(ctx, 'pixcfg_expiration', 'Digite o tempo de expiração em minutos:', {
@@ -130,6 +130,7 @@ export async function setExpiration(ctx: Context) {
         update: { value: config },
         create: { key: 'pix_config', value: config },
       });
+      await logAction({ action: 'PIX_EXPIRATION_CHANGED', details: { expirationMinutes: num } });
       await ctx.editMessage(`✅ Expiração configurada para ${num} minutos.`);
       await showPixConfig(ctx);
     },
