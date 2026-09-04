@@ -5,7 +5,7 @@ import { mercadopago } from '../services/mercadopago';
 import { confirmSale, releaseReservation } from '../services/stock';
 import { applyRechargeBonus } from '../services/bonus';
 import { creditAffiliateCommission } from '../flows/affiliateCommission';
-import { triggerPaymentApproved, triggerSaleCompleted } from '../admin/notificationsTrigger';
+import { handlePaymentApproved, handleSaleCompleted, handleAffiliateRecharge } from '../integrations/eventHooks';
 import { logAction } from '../services/logger';
 
 const router = Router();
@@ -34,10 +34,9 @@ router.post('/mercadopago', async (req, res) => {
         });
 
         if (payment.orderId) {
-          // Pagamento de compra
           const order = await tx.order.findUnique({
             where: { id: payment.orderId },
-            include: { stockUnits: true },
+            include: { stockUnits: true, user: true },
           });
           if (!order) throw new Error('Pedido não encontrado');
 
@@ -52,8 +51,8 @@ router.post('/mercadopago', async (req, res) => {
           // Comissão de afiliado
           await creditAffiliateCommission(order.id);
 
-          // Notificação de venda
-          await triggerSaleCompleted(order.id, payment.userId, order.product.name, parseFloat(order.totalPrice.toString()));
+          // Notificações
+          await handleSaleCompleted(order.id, payment.userId, order.user.firstName || 'Cliente', parseFloat(order.totalPrice.toString()));
         } else {
           // Recarga de saldo
           await tx.user.update({
@@ -69,12 +68,20 @@ router.post('/mercadopago', async (req, res) => {
             },
           });
 
-          // Aplica bônus de recarga (se houver)
+          // Bônus de recarga
           await applyRechargeBonus(payment.userId, parseFloat(payment.amount.toString()));
+
+          // Pontos de afiliado (se houver referenciador)
+          const user = await tx.user.findUnique({
+            where: { id: payment.userId },
+            select: { referredByUserId: true },
+          });
+          if (user?.referredByUserId) {
+            await handleAffiliateRecharge(user.referredByUserId, parseFloat(payment.amount.toString()));
+          }
         }
 
-        // Notificação de pagamento aprovado (para ambos os casos)
-        await triggerPaymentApproved(payment.id, payment.userId, parseFloat(payment.amount.toString()), payment.method);
+        await handlePaymentApproved(payment.id, payment.userId, parseFloat(payment.amount.toString()), payment.method);
       });
 
       console.log(`✅ Pagamento aprovado e processado: ${externalId}`);
