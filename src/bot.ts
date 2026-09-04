@@ -33,6 +33,7 @@ import { showSobre } from './flows/sobre';
 import { showAtendimentoDireto } from './flows/atendimentoDireto';
 import { showSupportConfig, editSupportLink, editBotVersion, editStoreName } from './admin/supportConfig';
 import { showSobreConfig, editSobreContent } from './admin/sobreConfig';
+import { listProducts, createProduct, editProduct, editProductName, editProductPrice, editProductDescription, editProductImage, toggleProduct, deleteProduct, listCategories, createCategory, editCategoryName, deleteCategory } from './admin/productCategoryAdminFull';
 
 const bot = new Telegraf<Context>(config.botToken);
 
@@ -59,7 +60,6 @@ bot.start(async (ctx) => {
     await prisma.user.update({ where: { id: user.id }, data: { lastActivityAt: new Date() } });
   }
 
-  // Verifica se é admin para mostrar menu administrativo pessoal
   if (user.role !== 'USER') {
     await goToScreen(ctx, 'admin_start');
   } else {
@@ -85,11 +85,10 @@ bot.on('inline_query', handleInlineQuery);
 // ==========================
 // CALLBACKS DE ATENDIMENTO
 // ==========================
-bot.action('menu_suporte', handleAttendanceButton); // IA
+bot.action('menu_suporte', handleAttendanceButton);
 bot.action('support_human', handleHumanButton);
 bot.action('support_exit', handleExitSupport);
 
-// Atendimento direto (vai para o chat privado)
 bot.action('menu_atendimento_direto', async (ctx) => {
   await ctx.answerCbQuery();
   await showAtendimentoDireto(ctx);
@@ -336,6 +335,84 @@ bot.action('sobre_edit', async (ctx) => {
 });
 
 // ==========================
+// CALLBACKS DE PRODUTOS E CATEGORIAS (ADMIN)
+// ==========================
+bot.action('admin_config_products', async (ctx) => {
+  await ctx.answerCbQuery();
+  await listProducts(ctx);
+});
+
+bot.action('prod_list', async (ctx) => {
+  await ctx.answerCbQuery();
+  await listProducts(ctx);
+});
+
+bot.action(/^products_page_(\d+)$/, async (ctx) => {
+  const page = parseInt(ctx.match[1]);
+  await listProducts(ctx, page);
+});
+
+bot.action('prod_new', async (ctx) => {
+  await ctx.answerCbQuery();
+  await createProduct(ctx);
+});
+
+bot.action(/^prod_edit_(\d+)$/, async (ctx) => {
+  const productId = parseInt(ctx.match[1]);
+  await editProduct(ctx, productId);
+});
+
+bot.action(/^prod_edit_name_(\d+)$/, async (ctx) => {
+  const productId = parseInt(ctx.match[1]);
+  await editProductName(ctx, productId);
+});
+
+bot.action(/^prod_edit_price_(\d+)$/, async (ctx) => {
+  const productId = parseInt(ctx.match[1]);
+  await editProductPrice(ctx, productId);
+});
+
+bot.action(/^prod_edit_desc_(\d+)$/, async (ctx) => {
+  const productId = parseInt(ctx.match[1]);
+  await editProductDescription(ctx, productId);
+});
+
+bot.action(/^prod_edit_image_(\d+)$/, async (ctx) => {
+  const productId = parseInt(ctx.match[1]);
+  await editProductImage(ctx, productId);
+});
+
+bot.action(/^prod_toggle_(\d+)$/, async (ctx) => {
+  const productId = parseInt(ctx.match[1]);
+  await toggleProduct(ctx, productId);
+});
+
+bot.action(/^prod_delete_(\d+)$/, async (ctx) => {
+  const productId = parseInt(ctx.match[1]);
+  await deleteProduct(ctx, productId);
+});
+
+bot.action('cat_menu', async (ctx) => {
+  await ctx.answerCbQuery();
+  await listCategories(ctx);
+});
+
+bot.action('cat_new', async (ctx) => {
+  await ctx.answerCbQuery();
+  await createCategory(ctx);
+});
+
+bot.action(/^cat_edit_(\d+)$/, async (ctx) => {
+  const categoryId = parseInt(ctx.match[1]);
+  await editCategoryName(ctx, categoryId);
+});
+
+bot.action(/^cat_delete_(\d+)$/, async (ctx) => {
+  const categoryId = parseInt(ctx.match[1]);
+  await deleteCategory(ctx, categoryId);
+});
+
+// ==========================
 // CALLBACKS DINÂMICOS GERAIS
 // ==========================
 bot.action('menu_recarregar', async (ctx) => { await goToScreen(ctx, 'recarregar'); });
@@ -370,6 +447,8 @@ bot.action(/.*/, async (ctx) => {
     callbackData.startsWith('users_') ||
     callbackData.startsWith('support_') ||
     callbackData.startsWith('sobre_') ||
+    callbackData.startsWith('prod_') ||
+    callbackData.startsWith('cat_') ||
     callbackData === 'admin_config_users'
   ) {
     await routeAdminCallback(ctx, callbackData);
