@@ -11,6 +11,8 @@ import { handleDynamicButton } from './flows/buttonHandlers';
 import { handleInlineQuery } from './flows/inlineSearch';
 import { goToScreen } from './screens/manager';
 import { showRanking } from './flows/ranking';
+import { routeAdminCallback } from './admin/adminCallbackRouter';
+import { showProduct } from './screens/product';
 
 const bot = new Telegraf<Context>(config.botToken);
 
@@ -43,17 +45,6 @@ bot.command('afiliados', cmdAfiliados);
 // Inline query
 bot.on('inline_query', handleInlineQuery);
 
-// Callback do botão Atendimento -> agora envia link para chat privado
-bot.action('menu_suporte', async (ctx) => {
-  await ctx.answerCbQuery();
-  const supportLink = process.env.SUPPORT_CHAT_LINK || 'https://t.me/larizinhastorebot';
-  await ctx.reply(`👤 Atendimento\n\nClique no link abaixo para falar com nossa equipe no chat privado:\n${supportLink}`, {
-    reply_markup: {
-      inline_keyboard: [[{ text: '💬 Abrir atendimento', url: supportLink }]],
-    },
-  });
-});
-
 // Callbacks de ranking
 bot.action('rank_servicos', async (ctx) => { await showRanking(ctx, 'servicos'); });
 bot.action('rank_recargas', async (ctx) => { await showRanking(ctx, 'recargas'); });
@@ -63,10 +54,25 @@ bot.action('rank_compras', async (ctx) => { await showRanking(ctx, 'compras'); }
 // Callback de compra
 bot.action(/^comprar_(\d+)$/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
-  await handleDynamicButton(ctx, 'comprar', String(productId));
+  await showProduct(ctx, productId);
 });
 
-// Mensagens naturais (IA embutida no bot principal, opcional)
+// Outros callbacks dinâmicos
+bot.action('menu_recarregar', async (ctx) => { await goToScreen(ctx, 'recarregar'); });
+bot.action('voltar_inicio', async (ctx) => { await goToScreen(ctx, 'start'); });
+
+// Todos os callbacks administrativos serão roteados por adminCallbackRouter
+bot.action(/.*/, async (ctx) => {
+  const callbackData = ctx.callbackQuery.data;
+  if (callbackData.startsWith('admin_') || callbackData.startsWith('config_') || callbackData.startsWith('aff_') || callbackData.startsWith('pixcfg_') || callbackData.startsWith('logins_') || callbackData.startsWith('research_') || callbackData.startsWith('template_') || callbackData.startsWith('btn') || callbackData.startsWith('bcast_') || callbackData.startsWith('antiflood_') || callbackData.startsWith('notif_') || callbackData.startsWith('saque_') || callbackData.startsWith('pixmanual_') || callbackData.startsWith('admin_updates_')) {
+    await routeAdminCallback(ctx, callbackData);
+  } else {
+    // fallback para outros callbacks não administrativos
+    await ctx.answerCbQuery('Ação não reconhecida.');
+  }
+});
+
+// Mensagens naturais (IA)
 bot.on('text', async (ctx) => {
   if (ctx.message && 'text' in ctx.message) {
     await handleNaturalLanguage(ctx, ctx.message.text);
