@@ -1,6 +1,7 @@
 import axios from 'axios';
 import prisma from '../database';
 import { logAction } from './logger';
+import { isBlockedByFlood } from '../middlewares/whatsappAntiFlood';
 
 interface WhatsAppApiConfig {
   url: string;
@@ -59,14 +60,24 @@ export async function sendWhatsAppButton(to: string, text: string, buttons: Arra
 
 // Processa mensagens recebidas (chamado pelo webhook)
 export async function handleIncomingWhatsAppMessage(data: any) {
-  // Exemplo de payload Evolution API: { event: 'messages.upsert', data: { key: { remoteJid, fromMe }, message: { conversation } } }
   const remoteJid = data?.data?.key?.remoteJid;
   const fromMe = data?.data?.key?.fromMe;
   const messageText = data?.data?.message?.conversation || data?.data?.message?.extendedTextMessage?.text || '';
 
   if (fromMe || !remoteJid) return;
 
-  // Importa dinamicamente o fluxo de ativação para evitar dependência circular
+  // Verifica anti-flood antes de processar
+  const blocked = await isBlockedByFlood(remoteJid);
+  if (blocked) {
+    console.log(`[AntiFlood] Mensagem de ${remoteJid} ignorada por bloqueio.`);
+    return;
+  }
+
+  // Importa dinamicamente o fluxo de comandos/ativação
   const { handleWhatsAppActivationFlow } = await import('../flows/whatsappActivation');
   await handleWhatsAppActivationFlow(remoteJid, messageText);
+
+  // Além da ativação, pode ter comandos de histórico, etc.
+  const { handleWhatsAppCommands } = await import('../flows/whatsappCommands');
+  await handleWhatsAppCommands(remoteJid, messageText);
 }
