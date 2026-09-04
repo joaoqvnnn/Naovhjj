@@ -13,17 +13,25 @@ import { goToScreen } from './screens/manager';
 import { showRanking } from './flows/ranking';
 import { routeAdminCallback } from './admin/adminCallbackRouter';
 import { showProduct } from './screens/product';
+import { showAlertsScreen, toggleAlert } from './flows/alerts';
+import { startChangeWhatsApp } from './flows/alterarDados';
+import { startWhatsAppDelivery } from './flows/delivery';
 import { handleAttendanceButton, handleHumanButton, handleExitSupport } from './handlers/attendance';
 import { handleSupportMessage } from './flows/aiSupport';
 
 const bot = new Telegraf<Context>(config.botToken);
 
+// ==========================
+// MIDDLEWARES GLOBAIS
+// ==========================
 bot.use(sessionMiddleware);
 bot.use(blockedUserMiddleware);
 bot.use(maintenanceMiddleware);
 bot.use(captureMiddleware);
 
-// Comandos
+// ==========================
+// COMANDOS
+// ==========================
 bot.start(async (ctx) => {
   const userId = ctx.from.id;
   let user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
@@ -44,41 +52,100 @@ bot.command('saldo', cmdSaldo);
 bot.command('id', cmdId);
 bot.command('afiliados', cmdAfiliados);
 
-// Inline query
+// ==========================
+// INLINE QUERY (pesquisa)
+// ==========================
 bot.on('inline_query', handleInlineQuery);
 
-// Callback do botão Atendimento -> inicia modo IA
+// ==========================
+// CALLBACKS DE ATENDIMENTO
+// ==========================
 bot.action('menu_suporte', handleAttendanceButton);
 bot.action('support_human', handleHumanButton);
 bot.action('support_exit', handleExitSupport);
 
-// Callbacks de ranking
+// ==========================
+// CALLBACKS DE RANKING
+// ==========================
 bot.action('rank_servicos', async (ctx) => { await showRanking(ctx, 'servicos'); });
 bot.action('rank_recargas', async (ctx) => { await showRanking(ctx, 'recargas'); });
 bot.action('rank_saldo', async (ctx) => { await showRanking(ctx, 'saldo'); });
 bot.action('rank_compras', async (ctx) => { await showRanking(ctx, 'compras'); });
 
-// Callback de compra
+// ==========================
+// CALLBACKS DE COMPRA
+// ==========================
 bot.action(/^comprar_(\d+)$/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
   await showProduct(ctx, productId);
 });
 
-// Outros callbacks dinâmicos
+// ==========================
+// CALLBACKS DE ALERTAS
+// ==========================
+bot.action(/^alert_toggle_(\d+)$/, async (ctx) => {
+  const productId = parseInt(ctx.match[1]);
+  await toggleAlert(ctx, productId);
+});
+
+bot.action(/^alerts_page_(\d+)$/, async (ctx) => {
+  const page = parseInt(ctx.match[1]);
+  ctx.session.data = { ...ctx.session.data, alertPage: page };
+  await showAlertsScreen(ctx, page);
+});
+
+// ==========================
+// CALLBACKS DE ALTERAÇÃO DE DADOS
+// ==========================
+bot.action('alterar_whatsapp', async (ctx) => {
+  await ctx.answerCbQuery();
+  await startChangeWhatsApp(ctx);
+});
+
+// ==========================
+// CALLBACKS DE ENTREGA POR WHATSAPP
+// ==========================
+bot.action(/^entregar_whatsapp_(\d+)$/, async (ctx) => {
+  const orderId = parseInt(ctx.match[1]);
+  await startWhatsAppDelivery(ctx, orderId);
+});
+
+// ==========================
+// CALLBACKS DINÂMICOS GERAIS
+// ==========================
 bot.action('menu_recarregar', async (ctx) => { await goToScreen(ctx, 'recarregar'); });
 bot.action('voltar_inicio', async (ctx) => { await goToScreen(ctx, 'start'); });
 
-// Roteamento de callbacks administrativos
+// ==========================
+// ROTEAMENTO ADMIN
+// ==========================
 bot.action(/.*/, async (ctx) => {
   const callbackData = ctx.callbackQuery.data;
-  if (callbackData.startsWith('admin_') || callbackData.startsWith('config_') || callbackData.startsWith('aff_') || callbackData.startsWith('pixcfg_') || callbackData.startsWith('logins_') || callbackData.startsWith('research_') || callbackData.startsWith('template_') || callbackData.startsWith('btn') || callbackData.startsWith('bcast_') || callbackData.startsWith('antiflood_') || callbackData.startsWith('notif_') || callbackData.startsWith('saque_') || callbackData.startsWith('pixmanual_') || callbackData.startsWith('admin_updates_')) {
+  if (
+    callbackData.startsWith('admin_') ||
+    callbackData.startsWith('config_') ||
+    callbackData.startsWith('aff_') ||
+    callbackData.startsWith('pixcfg_') ||
+    callbackData.startsWith('logins_') ||
+    callbackData.startsWith('research_') ||
+    callbackData.startsWith('template_') ||
+    callbackData.startsWith('btn') ||
+    callbackData.startsWith('bcast_') ||
+    callbackData.startsWith('antiflood_') ||
+    callbackData.startsWith('notif_') ||
+    callbackData.startsWith('saque_') ||
+    callbackData.startsWith('pixmanual_') ||
+    callbackData.startsWith('admin_updates_')
+  ) {
     await routeAdminCallback(ctx, callbackData);
   } else {
     await ctx.answerCbQuery('Ação não reconhecida.');
   }
 });
 
-// Mensagens de texto: se estiver em modo suporte, processa com IA; senão, assistente natural
+// ==========================
+// MENSAGENS DE TEXTO
+// ==========================
 bot.on('text', async (ctx) => {
   if (ctx.session.data?.supportMode && ctx.message && 'text' in ctx.message) {
     await handleSupportMessage(ctx, ctx.message.text);
@@ -89,6 +156,9 @@ bot.on('text', async (ctx) => {
   }
 });
 
+// ==========================
+// TRATAMENTO DE ERROS
+// ==========================
 bot.catch((err, ctx) => {
   console.error(`Erro para ${ctx.from?.id}:`, err);
   ctx.reply('Ocorreu um erro. Tente novamente.');
