@@ -8,10 +8,12 @@ import { sendPasswordResetCode } from '../services/email';
 import { generatePasswordResetCode, validatePasswordResetCode, resetPassword } from '../services/passwordReset';
 import { passwordResetRateLimit } from '../middlewares/passwordResetRateLimit';
 import { logAction } from '../services/logger';
+import { renderPage } from './layout';
+import { canAccessActivation, incrementAccessCount, getAccessLimit } from '../services/activation';
+import { banksFull, getFullBankOptionsHtml } from '../data/banksComplete';
 
 const router = Router();
 
-// Middleware para autenticar via token JWT (rotas protegidas)
 function authMiddleware(req: Request, res: Response, next: Function) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Não autorizado' });
@@ -28,7 +30,6 @@ function authMiddleware(req: Request, res: Response, next: Function) {
 // ATIVAÇÃO DE PRODUTO
 // ==============================
 
-// Página de ativação (formulário de senha)
 router.get('/ativar/:orderId', async (req, res) => {
   const { orderId } = req.params;
   const order = await prisma.order.findUnique({
@@ -37,41 +38,30 @@ router.get('/ativar/:orderId', async (req, res) => {
   });
 
   if (!order) {
-    return res.status(404).send('Pedido não encontrado.');
+    const content = `<p class="error">Pedido não encontrado.</p>`;
+    return res.status(404).send(renderPage('Ativar Produto', content));
   }
 
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Ativar Produto</title>
-  <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f4; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-    .container { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-    h2 { text-align: center; }
-    input[type="password"] { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-    button { width: 100%; padding: 10px; background: #6c5ce7; color: white; border: none; border-radius: 4px; cursor: pointer; }
-    .erro { color: red; text-align: center; }
-    a { display: block; text-align: center; margin-top: 10px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Ativar Produto: ${order.product.name}</h2>
+  // Verifica limite de acesso
+  const allowed = await canAccessActivation(order.id);
+  if (!allowed) {
+    const content = `<p class="error">Limite de acessos atingido para este pedido.</p>`;
+    return res.status(403).send(renderPage('Acesso Limitado', content));
+  }
+
+  const content = `
+    <p>Produto: <strong>${order.product.name}</strong></p>
+    <p>Digite a senha para liberar o conteúdo:</p>
     <form method="POST" action="/web/ativar/${order.id}">
-      <label>Digite a senha para liberar o conteúdo:</label>
-      <input type="password" name="senha" required />
+      <input type="password" name="senha" placeholder="Senha" required />
       <button type="submit">Ativar</button>
-      <p class="erro">${req.query.erro ? 'Senha incorreta' : ''}</p>
     </form>
-    <a href="/web/esqueci-senha">Esqueci a senha</a>
-  </div>
-</body>
-</html>`;
-  res.send(html);
+    <p class="error">${req.query.erro ? 'Senha incorreta' : ''}</p>
+    <p><a href="/web/esqueci-senha">Esqueci a senha</a></p>
+  `;
+  res.send(renderPage('Ativar Produto', content));
 });
 
-// Processa ativação
 router.post('/ativar/:orderId', async (req, res) => {
   const { orderId } = req.params;
   const { senha } = req.body;
@@ -81,7 +71,9 @@ router.post('/ativar/:orderId', async (req, res) => {
     include: { user: true, product: true, stockUnits: true },
   });
 
-  if (!order) return res.status(404).send('Pedido não encontrado');
+  if (!order) {
+    return res.status(404).send(renderPage('Erro', '<p class="error">Pedido não encontrado.</p>'));
+  }
 
   if (!order.user.passwordHash) {
     return res.redirect(`/web/definir-senha?orderId=${order.id}`);
@@ -92,28 +84,30 @@ router.post('/ativar/:orderId', async (req, res) => {
     return res.redirect(`/web/ativar/${order.id}?erro=1`);
   }
 
+  // Incrementa contador de acesso
+  await incrementAccessCount(order.id);
+
   const conteudo = order.stockUnits.map(u => u.content).join('\n');
-  const html = `
+  const content = `
     <h2>Conteúdo liberado</h2>
     <p>Produto: ${order.product.name}</p>
-    <p>Dados de acesso:</p>
     <pre>${conteudo}</pre>
+    <p class="success">Acesso registrado. Restam ${Math.max(0, (order.maxAccess || await getAccessLimit(order.id)) - (order.accessCount + 1))} acessos.</p>
   `;
-  res.send(html);
+  res.send(renderPage('Produto Liberado', content, false));
 });
 
-// Definir senha pela primeira vez (se ainda não tiver)
+// Definir senha pela primeira vez
 router.get('/definir-senha', async (req, res) => {
   const { orderId } = req.query;
-  const html = `
-    <h2>Definir Senha</h2>
+  const content = `
     <form method="POST" action="/web/definir-senha">
       <input type="hidden" name="orderId" value="${orderId || ''}" />
       <input type="password" name="senha" placeholder="Nova senha" required />
       <button type="submit">Salvar</button>
     </form>
   `;
-  res.send(html);
+  res.send(renderPage('Definir Senha', content));
 });
 
 router.post('/definir-senha', async (req, res) => {
@@ -136,192 +130,121 @@ router.post('/definir-senha', async (req, res) => {
 // ==============================
 
 router.get('/esqueci-senha', (req, res) => {
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Recuperar Senha</title>
-  <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f4; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-    .container { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-    h2 { text-align: center; color: #333; }
-    input[type="email"], input[type="text"], input[type="password"] { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-    button { width: 100%; padding: 10px; background: #6c5ce7; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
-    button:hover { background: #5a4bd1; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Recuperar Senha</h2>
+  const content = `
     <p>Digite seu e-mail cadastrado para receber um código de recuperação.</p>
     <form method="POST" action="/web/esqueci-senha">
       <input type="email" name="email" placeholder="Seu e-mail" required />
       <button type="submit">Enviar código</button>
     </form>
     <p><a href="/web/login">Voltar ao login</a></p>
-  </div>
-</body>
-</html>`;
-  res.send(html);
+  `;
+  res.send(renderPage('Recuperar Senha', content));
 });
 
 router.post('/esqueci-senha', passwordResetRateLimit, async (req, res) => {
   const { email } = req.body;
   if (!email || !isValidEmail(email)) {
-    return res.status(400).send('E-mail inválido.');
+    return res.status(400).send(renderPage('Erro', '<p class="error">E-mail inválido.</p>'));
   }
 
   const user = await prisma.user.findFirst({ where: { email } });
   if (!user) {
-    return res.send('Se o e-mail estiver cadastrado, você receberá um código em instantes.');
+    const content = '<p class="success">Se o e-mail estiver cadastrado, você receberá um código em instantes.</p>';
+    return res.send(renderPage('Recuperar Senha', content));
   }
 
   const code = await generatePasswordResetCode(user.id);
   const sent = await sendPasswordResetCode(email, code);
   if (!sent) {
-    return res.status(500).send('Erro ao enviar e-mail. Tente novamente mais tarde.');
+    const content = '<p class="error">Erro ao enviar e-mail. Tente novamente mais tarde.</p>';
+    return res.status(500).send(renderPage('Erro', content));
   }
 
-  res.send('Código enviado para seu e-mail. Verifique sua caixa de entrada.');
+  const content = '<p class="success">Código enviado para seu e-mail. Verifique sua caixa de entrada.</p>';
+  res.send(renderPage('Recuperar Senha', content));
 });
 
 router.get('/redefinir-senha', (req, res) => {
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Redefinir Senha</title>
-  <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f4; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-    .container { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-    h2 { text-align: center; color: #333; }
-    input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-    button { width: 100%; padding: 10px; background: #6c5ce7; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Redefinir Senha</h2>
+  const content = `
     <form method="POST" action="/web/redefinir-senha">
       <input type="email" name="email" placeholder="Seu e-mail" required />
       <input type="text" name="codigo" placeholder="Código de 6 dígitos" required />
       <input type="password" name="novaSenha" placeholder="Nova senha" required />
       <button type="submit">Redefinir</button>
     </form>
-  </div>
-</body>
-</html>`;
-  res.send(html);
+  `;
+  res.send(renderPage('Redefinir Senha', content));
 });
 
 router.post('/redefinir-senha', async (req, res) => {
   const { email, codigo, novaSenha } = req.body;
   if (!email || !codigo || !novaSenha) {
-    return res.status(400).send('Preencha todos os campos.');
+    return res.status(400).send(renderPage('Erro', '<p class="error">Preencha todos os campos.</p>'));
   }
   if (!isValidEmail(email)) {
-    return res.status(400).send('E-mail inválido.');
+    return res.status(400).send(renderPage('Erro', '<p class="error">E-mail inválido.</p>'));
   }
 
   const user = await prisma.user.findFirst({ where: { email } });
   if (!user) {
-    return res.status(400).send('Usuário não encontrado.');
+    return res.status(400).send(renderPage('Erro', '<p class="error">Usuário não encontrado.</p>'));
   }
 
   const valid = await validatePasswordResetCode(user.id, codigo);
   if (!valid) {
-    return res.status(400).send('Código inválido ou expirado.');
+    return res.status(400).send(renderPage('Erro', '<p class="error">Código inválido ou expirado.</p>'));
   }
 
   if (novaSenha.length < 6) {
-    return res.status(400).send('A senha deve ter no mínimo 6 caracteres.');
+    return res.status(400).send(renderPage('Erro', '<p class="error">A senha deve ter no mínimo 6 caracteres.</p>'));
   }
 
   await resetPassword(user.id, novaSenha);
 
-  const html = `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><title>Senha Redefinida</title></head>
-<body style="font-family: Arial; text-align: center; margin-top: 100px;">
-  <h2>✅ Senha redefinida com sucesso!</h2>
-  <p>Você já pode usar sua nova senha em todos os serviços.</p>
-</body>
-</html>`;
-  res.send(html);
+  const content = '<h2>✅ Senha redefinida com sucesso!</h2><p>Você já pode usar sua nova senha em todos os serviços.</p>';
+  res.send(renderPage('Senha Redefinida', content, false));
 });
 
 // ==============================
 // SAQUE BANCÁRIO (Web)
 // ==============================
 
-// Página de login
 router.get('/saque', (req, res) => {
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Saque Bancário</title>
-  <style>
-    body { font-family: Arial; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f4f4f4; }
-    .container { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-    input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-    button { width: 100%; padding: 10px; background: #6c5ce7; color: white; border: none; border-radius: 4px; cursor: pointer; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Saque Bancário</h2>
+  const content = `
+    <p>Faça login com seu Telegram ID e senha para acessar o saque bancário.</p>
     <form method="POST" action="/web/saque/login">
       <input type="text" name="telegramId" placeholder="Telegram ID" required />
       <input type="password" name="senha" placeholder="Senha" required />
       <button type="submit">Entrar</button>
     </form>
-  </div>
-</body>
-</html>`;
-  res.send(html);
+  `;
+  res.send(renderPage('Saque Bancário', content));
 });
 
-// Processa login
 router.post('/saque/login', async (req, res) => {
   const { telegramId, senha } = req.body;
   const user = await prisma.user.findUnique({
     where: { telegramId: BigInt(telegramId) },
   });
   if (!user || !user.passwordHash) {
-    return res.status(401).send('Credenciais inválidas');
+    return res.status(401).send(renderPage('Erro', '<p class="error">Credenciais inválidas</p>'));
   }
   const valid = await bcrypt.compare(senha, user.passwordHash);
   if (!valid) {
-    return res.status(401).send('Credenciais inválidas');
+    return res.status(401).send(renderPage('Erro', '<p class="error">Credenciais inválidas</p>'));
   }
 
   const token = jwt.sign({ userId: user.id }, config.web.secret, { expiresIn: '15m' });
 
-  // Formulário de saque
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Saque Bancário - Dados</title>
-  <style>
-    body { font-family: Arial; background: #f4f4f4; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-    .container { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
-    input, select { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-    button { width: 100%; padding: 10px; background: #6c5ce7; color: white; border: none; border-radius: 4px; cursor: pointer; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Saque Bancário</h2>
-    <p>Saldo de comissão: R$ ${user.affiliateBalance}</p>
+  const content = `
+    <p>Saldo de comissão: <strong>R$ ${user.affiliateBalance}</strong></p>
     <form method="POST" action="/web/saque/processar">
       <input type="hidden" name="token" value="${token}" />
       <label>Valor:</label>
       <input type="number" step="0.01" name="valor" required />
       <label>Banco:</label>
       <select name="banco" required>
-        ${getBankOptions()}
+        ${getFullBankOptionsHtml()}
       </select>
       <label>Agência:</label>
       <input type="text" name="agencia" required />
@@ -338,24 +261,21 @@ router.post('/saque/login', async (req, res) => {
       <input type="text" name="titular" required />
       <button type="submit">Solicitar Saque</button>
     </form>
-  </div>
-</body>
-</html>`;
-  res.send(html);
+  `;
+  res.send(renderPage('Saque Bancário', content));
 });
 
-// Processa saque bancário
 router.post('/saque/processar', async (req, res) => {
   const { token, valor, banco, agencia, conta, tipo, cpfCnpj, titular } = req.body;
   try {
     const decoded = jwt.verify(token, config.web.secret) as { userId: number };
     const userId = decoded.userId;
     const amount = parseFloat(valor);
-    if (isNaN(amount) || amount <= 0) return res.status(400).send('Valor inválido');
+    if (isNaN(amount) || amount <= 0) return res.status(400).send(renderPage('Erro', '<p class="error">Valor inválido</p>'));
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) return res.status(404).send('Usuário não encontrado');
-    if (user.affiliateBalance < amount) return res.status(400).send('Saldo insuficiente');
+    if (!user) return res.status(404).send(renderPage('Erro', '<p class="error">Usuário não encontrado</p>'));
+    if (user.affiliateBalance < amount) return res.status(400).send(renderPage('Erro', '<p class="error">Saldo insuficiente</p>'));
 
     await prisma.withdrawal.create({
       data: {
@@ -374,10 +294,11 @@ router.post('/saque/processar', async (req, res) => {
       data: { affiliateBalance: { decrement: amount } },
     });
 
-    res.send('Solicitação de saque enviada com sucesso. Aguarde processamento.');
+    const content = '<p class="success">Solicitação de saque enviada com sucesso. Aguarde processamento.</p>';
+    res.send(renderPage('Saque Solicitado', content, false));
   } catch (error) {
     console.error('Erro no processamento de saque:', error);
-    res.status(400).send('Erro ao processar saque');
+    res.status(400).send(renderPage('Erro', '<p class="error">Erro ao processar saque</p>'));
   }
 });
 
@@ -391,12 +312,10 @@ router.get('/saque/historico', authMiddleware, async (req, res) => {
     where: { userId },
     orderBy: { createdAt: 'desc' },
   });
-  let html = '<h2>Histórico de Saques</h2><ul>';
-  for (const w of withdrawals) {
-    html += `<li>#${w.id} - R$ ${w.amount} - ${w.status} - ${w.createdAt.toLocaleDateString('pt-BR')}</li>`;
-  }
-  html += '</ul>';
-  res.send(html);
+  let lista = withdrawals.map(w => `<li>#${w.id} - R$ ${w.amount} - ${w.status} - ${w.createdAt.toLocaleDateString('pt-BR')}</li>`).join('');
+  if (!lista) lista = '<li>Nenhum saque realizado.</li>';
+  const content = `<ul>${lista}</ul>`;
+  res.send(renderPage('Histórico de Saques', content));
 });
 
 // ==============================
@@ -404,31 +323,10 @@ router.get('/saque/historico', authMiddleware, async (req, res) => {
 // ==============================
 
 router.get('/termos', async (req, res) => {
-  // Busca template de termos (se existir)
   const template = await prisma.messageTemplate.findUnique({ where: { key: 'termos' } });
   const texto = template?.text || 'Termos de uso não configurados.';
-  res.send(`<div style="font-family: Arial; max-width: 800px; margin: auto; padding: 20px;">${texto.replace(/\n/g, '<br>')}</div>`);
+  const content = `<div>${texto.replace(/\n/g, '<br>')}</div>`;
+  res.send(renderPage('Termos de Uso', content));
 });
-
-// ==============================
-// FUNÇÃO AUXILIAR: lista de bancos (exemplo com principais)
-// ==============================
-
-function getBankOptions(): string {
-  const banks = [
-    ['001', 'Banco do Brasil'],
-    ['237', 'Bradesco'],
-    ['341', 'Itaú'],
-    ['104', 'Caixa Econômica Federal'],
-    ['033', 'Santander'],
-    ['260', 'Nubank'],
-    ['290', 'PagBank'],
-    ['212', 'Banco Original'],
-    ['077', 'Banco Inter'],
-    ['336', 'C6 Bank'],
-    // ... adicionar mais de 500 conforme necessidade real
-  ];
-  return banks.map(b => `<option value="${b[0]}">${b[0]} - ${b[1]}</option>`).join('');
-}
 
 export default router;
