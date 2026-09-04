@@ -70,10 +70,24 @@ bot.start(async (ctx) => {
           [{ text: '🛍️ Comprar Produtos', callback_data: 'menu_comprar' }],
           [{ text: '👤 Meu Perfil', callback_data: 'menu_perfil' }],
           [{ text: '💰 Recarregar', callback_data: 'menu_recarregar' }],
+          [{ text: '🤝 Afiliados', callback_data: 'menu_afiliados' }],
+          [{ text: '🏆 Ranking', callback_data: 'menu_ranking' }],
+          [{ text: 'ℹ️ Sobre', callback_data: 'menu_sobre' }],
         ],
       },
     }
   );
+});
+
+// Comando admin
+bot.command('admin', async (ctx) => {
+  const userId = ctx.from.id;
+  const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
+  if (user && user.role !== 'USER') {
+    await goToScreen(ctx, 'admin_start');
+  } else {
+    await ctx.reply('Acesso negado.');
+  }
 });
 
 bot.command('pix', cmdPix);
@@ -92,6 +106,16 @@ bot.command('resgatar', handleResgatarCommand);
 bot.on('inline_query', handleInlineQuery);
 
 // ==========================
+// CALLBACKS DO MENU PRINCIPAL
+// ==========================
+bot.action('menu_comprar', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'comprar'); });
+bot.action('menu_perfil', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'perfil'); });
+bot.action('menu_recarregar', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'recarregar'); });
+bot.action('menu_afiliados', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'afiliados'); });
+bot.action('menu_ranking', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'ranking'); });
+bot.action('menu_sobre', async (ctx) => { await ctx.answerCbQuery(); await showSobre(ctx); });
+
+// ==========================
 // CALLBACKS DE ATENDIMENTO
 // ==========================
 bot.action('menu_suporte', handleAttendanceButton);
@@ -101,14 +125,6 @@ bot.action('support_exit', handleExitSupport);
 bot.action('menu_atendimento_direto', async (ctx) => {
   await ctx.answerCbQuery();
   await showAtendimentoDireto(ctx);
-});
-
-// ==========================
-// CALLBACKS DE SOBRE
-// ==========================
-bot.action('menu_sobre', async (ctx) => {
-  await ctx.answerCbQuery();
-  await showSobre(ctx);
 });
 
 // ==========================
