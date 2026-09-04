@@ -54,17 +54,26 @@ bot.start(async (ctx) => {
   let user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
   if (!user) {
     user = await prisma.user.create({ data: { telegramId: BigInt(userId), username: ctx.from.username } });
-    const { applyRegisterBonus } = await import('./services/bonus');
-    await applyRegisterBonus(user.id);
   } else {
     await prisma.user.update({ where: { id: user.id }, data: { lastActivityAt: new Date() } });
   }
 
-  if (user.role !== 'USER') {
-    await goToScreen(ctx, 'admin_start');
-  } else {
-    await goToScreen(ctx, 'start');
-  }
+  await ctx.reply(
+    `🎬 Bem-vindo à Larizinha Store!\n\n` +
+    `💠 Seus Dados:\n` +
+    `├ 👤 ID: ${userId}\n` +
+    `└ 💰 Saldo: R$ ${user.balance.toString()}\n\n` +
+    `Use os botões abaixo para navegar.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🛍️ Comprar Produtos', callback_data: 'menu_comprar' }],
+          [{ text: '👤 Meu Perfil', callback_data: 'menu_perfil' }],
+          [{ text: '💰 Recarregar', callback_data: 'menu_recarregar' }],
+        ],
+      },
+    }
+  );
 });
 
 bot.command('pix', cmdPix);
