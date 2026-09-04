@@ -14,6 +14,10 @@ import { showNotificationConfig, toggleNotification } from './notifications';
 import { showWithdrawalMenu, viewWithdrawal, approveWithdrawal, rejectWithdrawal, reprocessWithdrawal } from './withdrawalReview';
 import { showManualPixPending, viewManualPix, confirmManualPixAction, rejectManualPixAction } from './pixManual';
 import { handleWhatsAppAntiFloodMenu, handleWhatsAppAntiFloodSet } from '../handlers/whatsappHandlers';
+import { showDetailedStats } from './dashboardStats';
+import { showPromotionSettings, setAutoDelete, setViewerExpiration } from './promotionSettings';
+import { showInactivityConfig, setInactivityDays } from './inactivityConfig';
+import { showTranscriptionConfig, setTranscriptionKey } from './transcriptionConfig';
 
 // Roteador central de callbacks administrativos
 export async function routeAdminCallback(ctx: Context, callbackData: string) {
@@ -44,7 +48,7 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'aff_set_min') return setAffiliateMin(ctx);
   if (callbackData === 'aff_set_multiplier') return setAffiliateMultiplier(ctx);
 
-  // Usuários (pode ser implementado separadamente)
+  // Usuários
   if (callbackData === 'admin_config_users') return ctx.editMessage('Funcionalidade de usuários em breve.');
 
   // Pix
@@ -92,12 +96,10 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   // Broadcast
   if (callbackData === 'admin_actions_broadcast') return showBroadcastMenuWithButtons(ctx);
   if (callbackData.startsWith('bcast_')) {
-    // Segmentos
     if (callbackData === 'bcast_all') return startBroadcastText(ctx, 'all');
     if (callbackData === 'bcast_active') return startBroadcastText(ctx, 'active');
     if (callbackData === 'bcast_buyers') return startBroadcastText(ctx, 'buyers');
     if (callbackData === 'bcast_affiliates') return startBroadcastText(ctx, 'affiliates');
-    // Botões
     if (callbackData === 'bcast_btn_comprar') return addBuyButton(ctx);
     if (callbackData === 'bcast_btn_saldo') return addBalanceButton(ctx);
     if (callbackData === 'bcast_btn_cadastrar') return addRegisterButton(ctx);
@@ -114,11 +116,11 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   // Anti-flood WhatsApp
   if (callbackData === 'wa_af_menu') return handleWhatsAppAntiFloodMenu(ctx);
   if (callbackData.startsWith('wa_af_set_')) {
-    const param = callbackData.split('_')[3]; // max, interval, block
+    const param = callbackData.split('_')[3];
     return handleWhatsAppAntiFloodSet(ctx, param);
   }
 
-  // Menu de anti-flood principal (escolha entre Telegram e WhatsApp)
+  // Menu de anti-flood principal
   if (callbackData === 'admin_actions_antiflood') {
     return ctx.editMessage('🛡️ Anti-Flood\n\nEscolha:', {
       reply_markup: {
@@ -146,6 +148,23 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData.startsWith('pixmanual_view_')) return viewManualPix(ctx, parseInt(callbackData.split('_')[2]));
   if (callbackData.startsWith('pixmanual_confirm_')) return confirmManualPixAction(ctx, parseInt(callbackData.split('_')[2]));
   if (callbackData.startsWith('pixmanual_reject_')) return rejectManualPixAction(ctx, parseInt(callbackData.split('_')[2]));
+
+  // Estatísticas detalhadas
+  if (callbackData === 'admin_transactions_stats') return showDetailedStats(ctx);
+  if (callbackData === 'stats_refresh') return showDetailedStats(ctx);
+
+  // Promoções e configurações
+  if (callbackData === 'promo_settings') return showPromotionSettings(ctx);
+  if (callbackData === 'promo_set_autodelete') return setAutoDelete(ctx);
+  if (callbackData === 'promo_set_viewers') return setViewerExpiration(ctx);
+
+  // Inatividade
+  if (callbackData === 'admin_inactivity') return showInactivityConfig(ctx);
+  if (callbackData === 'inactivity_set_days') return setInactivityDays(ctx);
+
+  // Transcrição
+  if (callbackData === 'admin_transcription') return showTranscriptionConfig(ctx);
+  if (callbackData === 'transcription_set_key') return setTranscriptionKey(ctx);
 
   // Atualizações
   if (callbackData === 'admin_updates_check') return ctx.editMessage('✅ Sistema atualizado.');
