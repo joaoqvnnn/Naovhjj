@@ -18,8 +18,9 @@ import { showDetailedStats } from './dashboardStats';
 import { showPromotionSettings, setAutoDelete, setViewerExpiration } from './promotionSettings';
 import { showInactivityConfig, setInactivityDays } from './inactivityConfig';
 import { showTranscriptionConfig, setTranscriptionKey } from './transcriptionConfig';
+import { showGiftCardAdminMenu, createGiftCard, createGiftCardBatch, listGiftCards, viewGiftCard, disableGiftCard, deleteGiftCard } from './giftCardAdmin';
+import { checkUpdates, viewSystemLogs, cleanOldData } from './updatesActions';
 
-// Roteador central de callbacks administrativos
 export async function routeAdminCallback(ctx: Context, callbackData: string) {
   // Dashboard e menus principais
   if (callbackData === 'admin_dashboard') return showAdminDashboard(ctx);
@@ -48,7 +49,7 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'aff_set_min') return setAffiliateMin(ctx);
   if (callbackData === 'aff_set_multiplier') return setAffiliateMultiplier(ctx);
 
-  // Usuários
+  // Usuários (placeholder)
   if (callbackData === 'admin_config_users') return ctx.editMessage('Funcionalidade de usuários em breve.');
 
   // Pix
@@ -166,10 +167,19 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'admin_transcription') return showTranscriptionConfig(ctx);
   if (callbackData === 'transcription_set_key') return setTranscriptionKey(ctx);
 
-  // Atualizações
-  if (callbackData === 'admin_updates_check') return ctx.editMessage('✅ Sistema atualizado.');
-  if (callbackData === 'admin_updates_logs') return ctx.editMessage('📜 Logs ainda não implementados.');
-  if (callbackData === 'admin_updates_clean') return ctx.editMessage('🧹 Limpeza não implementada.');
+  // Gift Cards Admin
+  if (callbackData === 'giftcard_admin_menu') return showGiftCardAdminMenu(ctx);
+  if (callbackData === 'giftcard_admin_create') return createGiftCard(ctx);
+  if (callbackData === 'giftcard_admin_batch') return createGiftCardBatch(ctx);
+  if (callbackData === 'giftcard_admin_list') return listGiftCards(ctx);
+  if (callbackData.startsWith('giftcard_admin_view_')) return viewGiftCard(ctx, parseInt(callbackData.split('_')[3]));
+  if (callbackData.startsWith('giftcard_admin_disable_')) return disableGiftCard(ctx, parseInt(callbackData.split('_')[3]));
+  if (callbackData.startsWith('giftcard_admin_delete_')) return deleteGiftCard(ctx, parseInt(callbackData.split('_')[3]));
+
+  // Atualizações reais
+  if (callbackData === 'admin_updates_check') return checkUpdates(ctx);
+  if (callbackData === 'admin_updates_logs') return viewSystemLogs(ctx);
+  if (callbackData === 'admin_updates_clean') return cleanOldData(ctx);
 
   // Fallback
   return ctx.answerCbQuery('Ação não reconhecida.');
