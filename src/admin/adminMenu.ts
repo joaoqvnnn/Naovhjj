@@ -3,29 +3,17 @@ import prisma from '../database';
 import { isAdmin } from './userManagement';
 import { formatCurrency } from '../utils/format';
 
-// Dashboard administrativo principal
 export async function showAdminDashboard(ctx: Context) {
-  if (!(await isAdmin(ctx))) {
-    await ctx.editMessage('⛔ Acesso negado.');
-    return;
-  }
+  if (!(await isAdmin(ctx))) return ctx.editMessage('⛔ Acesso negado.');
 
   const totalUsers = await prisma.user.count();
-  const totalRevenue = await prisma.payment.aggregate({
-    where: { status: 'APPROVED' },
-    _sum: { amount: true },
-  });
+  const totalRevenue = await prisma.payment.aggregate({ where: { status: 'APPROVED' }, _sum: { amount: true } });
   const todayRevenue = await prisma.payment.aggregate({
-    where: {
-      status: 'APPROVED',
-      paidAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
-    },
+    where: { status: 'APPROVED', paidAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
     _sum: { amount: true },
   });
   const totalOrders = await prisma.order.count();
-  const todayOrders = await prisma.order.count({
-    where: { createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
-  });
+  const todayOrders = await prisma.order.count({ where: { createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } } });
 
   const text = `📊 DASHBOARD\n\n` +
     `👥 Users: ${totalUsers}\n` +
@@ -33,7 +21,7 @@ export async function showAdminDashboard(ctx: Context) {
     `💰 Receita hoje: ${formatCurrency(todayRevenue._sum.amount || 0)}\n` +
     `🛒 Vendas totais: ${totalOrders}\n` +
     `🛒 Vendas hoje: ${todayOrders}\n\n` +
-    `Use os botões abaixo para me configurar.`;
+    `Use os botões abaixo.`;
 
   await ctx.editMessage(text, {
     reply_markup: {
@@ -42,13 +30,12 @@ export async function showAdminDashboard(ctx: Context) {
         [{ text: '🛠️ AÇÕES', callback_data: 'admin_menu_actions' }],
         [{ text: '💳 TRANSAÇÕES', callback_data: 'admin_menu_transactions' }],
         [{ text: '🔄 ATUALIZAÇÕES', callback_data: 'admin_menu_updates' }],
-        [{ text: '🏠 Menu Pessoal', callback_data: 'admin_start' }],
+        [{ text: '⏮️ Voltar', callback_data: 'voltar_inicio' }],
       ],
     },
   });
 }
 
-// Submenu CONFIGURAÇÕES
 export async function showConfigMenu(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
   await ctx.editMessage('⚙️ MENU DE CONFIGURAÇÕES\n\nEscolha uma opção:', {
@@ -67,7 +54,6 @@ export async function showConfigMenu(ctx: Context) {
   });
 }
 
-// Submenu AÇÕES
 export async function showActionsMenu(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
   await ctx.editMessage('🛠️ MENU DE AÇÕES\n\nEscolha uma ação:', {
@@ -84,7 +70,6 @@ export async function showActionsMenu(ctx: Context) {
   });
 }
 
-// Submenu TRANSAÇÕES
 export async function showTransactionsMenu(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
   await ctx.editMessage('💳 MENU DE TRANSAÇÕES\n\nEscolha uma opção:', {
@@ -99,7 +84,6 @@ export async function showTransactionsMenu(ctx: Context) {
   });
 }
 
-// Submenu ATUALIZAÇÕES
 export async function showUpdatesMenu(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
   await ctx.editMessage('🔄 MENU DE ATUALIZAÇÕES\n\nEscolha uma opção:', {
