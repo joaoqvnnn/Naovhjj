@@ -3,18 +3,16 @@ import config from '../config';
 import prisma from '../database';
 import { formatCurrency, formatDate, formatTime } from '../utils/format';
 
-// Cria transporter com base nas configurações SMTP
 const transporter = nodemailer.createTransport({
   host: config.smtp.host,
   port: config.smtp.port,
-  secure: config.smtp.port === 465, // true se usar SSL
+  secure: config.smtp.port === 465,
   auth: {
     user: config.smtp.user,
     pass: config.smtp.pass,
   },
 });
 
-// Interface para dados de compra
 interface PurchaseEmailData {
   to: string;
   orderId: number;
@@ -27,22 +25,25 @@ interface PurchaseEmailData {
   date: Date;
   validity?: string;
   description?: string;
-  loginData?: string; // conteúdo da unidade (login/senha)
+  loginData?: string;
 }
 
-// Função principal para enviar e-mail de entrega de compra
+// Gera o link de ativação único
+function generateActivationLink(orderId: number): string {
+  return `${config.web.url}/web/ativar/${orderId}`;
+}
+
 export async function sendPurchaseEmail(data: PurchaseEmailData): Promise<boolean> {
   try {
-    // Busca template personalizado no banco (se existir)
     const template = await prisma.messageTemplate.findUnique({
       where: { key: 'email_compra' },
     });
 
+    const activationLink = generateActivationLink(data.orderId);
     let subject = `Compra realizada - ${data.productName}`;
     let htmlBody = '';
 
     if (template) {
-      // Substitui variáveis dinâmicas no texto do template
       const templateText = template.text
         .replace(/\{produto\}/g, data.productName)
         .replace(/\{valor\}/g, formatCurrency(data.total))
@@ -53,13 +54,11 @@ export async function sendPurchaseEmail(data: PurchaseEmailData): Promise<boolea
         .replace(/\{pagamento\}/g, data.paymentMethod)
         .replace(/\{validade\}/g, data.validity || '')
         .replace(/\{descricao\}/g, data.description || '')
-        .replace(/\{login\}/g, data.loginData || '');
+        .replace(/\{login\}/g, data.loginData || '')
+        .replace(/\{link_ativacao\}/g, activationLink);
 
-      // Converte quebras de linha para <br> para HTML
       htmlBody = templateText.replace(/\n/g, '<br>');
-      subject = `Compra realizada - ${data.productName}`; // poderia ser configurável
     } else {
-      // Template padrão
       htmlBody = `
         <h2>Compra realizada com sucesso!</h2>
         <p><strong>Produto:</strong> ${data.productName}</p>
@@ -67,7 +66,9 @@ export async function sendPurchaseEmail(data: PurchaseEmailData): Promise<boolea
         <p><strong>Data:</strong> ${formatDate(data.date)} ${formatTime(data.date)}</p>
         <p><strong>Pedido ID:</strong> ${data.orderId}</p>
         ${data.validity ? `<p><strong>Vencimento:</strong> ${data.validity}</p>` : ''}
-        ${data.loginData ? `<p><strong>Dados de acesso:</strong> ${data.loginData}</p>` : ''}
+        <p><strong>Para acessar seu produto, clique no link abaixo e insira sua senha:</strong></p>
+        <p><a href="${activationLink}" style="display:inline-block;padding:10px 20px;background:#6c5ce7;color:#fff;text-decoration:none;border-radius:5px;">Ativar Produto</a></p>
+        <p>Ou copie e cole no navegador: ${activationLink}</p>
         <p>Obrigado por comprar conosco!</p>
       `;
     }
@@ -84,30 +85,12 @@ export async function sendPurchaseEmail(data: PurchaseEmailData): Promise<boolea
     return true;
   } catch (error) {
     console.error('❌ Erro ao enviar e-mail:', error);
-    // Registra falha no log (pode ser usado para tentativas posteriores)
     await prisma.log.create({
       data: {
         action: 'EMAIL_SEND_FAILED',
         details: { error: String(error), to: data.to, orderId: data.orderId },
       },
     });
-    return false;
-  }
-}
-
-// Função para enviar código de recuperação de senha
-export async function sendPasswordResetCode(to: string, code: string): Promise<boolean> {
-  try {
-    const mailOptions = {
-      from: config.smtp.from,
-      to,
-      subject: 'Código de recuperação de senha',
-      html: `<p>Seu código de recuperação é: <strong>${code}</strong></p><p>Válido por 10 minutos.</p>`,
-    };
-    await transporter.sendMail(mailOptions);
-    return true;
-  } catch (error) {
-    console.error('Erro ao enviar código de recuperação:', error);
     return false;
   }
 }
