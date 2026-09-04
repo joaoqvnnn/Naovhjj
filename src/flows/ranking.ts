@@ -1,28 +1,58 @@
 import { Context } from '../types/context';
 import prisma from '../database';
 import { formatCurrency } from '../utils/format';
-import { goToScreen } from '../screens/manager';
 
-// Tela de rankings
-export async function showRankingScreen(ctx: Context) {
-  await ctx.editMessage(
-    `🏆 RANKINGS\n\nSelecione o tipo de ranking:`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '📦 Serviços mais vendidos', callback_data: 'rank_produtos' }],
-          [{ text: '👥 Usuários que mais compraram', callback_data: 'rank_usuarios_compras' }],
-          [{ text: '💰 Usuários que mais recarregaram', callback_data: 'rank_usuarios_recargas' }],
-          [{ text: '💎 Maiores saldos', callback_data: 'rank_saldos' }],
-          [{ text: '⏮️ Voltar', callback_data: 'voltar' }],
-        ],
-      },
+// Tipos de ranking
+type RankingType = 'servicos' | 'recargas' | 'saldo' | 'compras';
+
+// Função principal que renderiza a mensagem do ranking
+export async function showRanking(ctx: Context, type: RankingType = 'servicos') {
+  const buttons = [
+    { text: `${type === 'servicos' ? '✅' : '☑️'} Serviços mais vendidos`, callback_data: 'rank_servicos' },
+    { text: `${type === 'recargas' ? '✅' : '☑️'} Usuários que mais recarregaram`, callback_data: 'rank_recargas' },
+    { text: `${type === 'saldo' ? '✅' : '☑️'} Maiores saldos`, callback_data: 'rank_saldo' },
+    { text: `${type === 'compras' ? '✅' : '☑️'} Usuários que mais compraram`, callback_data: 'rank_compras' },
+    { text: '⏮️ Voltar', callback_data: 'voltar_inicio' },
+  ];
+
+  let text = '';
+
+  switch (type) {
+    case 'servicos':
+      text = await getTopProducts();
+      break;
+    case 'recargas':
+      text = await getTopRecharges();
+      break;
+    case 'saldo':
+      text = await getTopBalances();
+      break;
+    case 'compras':
+      text = await getTopBuyers();
+      break;
+  }
+
+  // Edita a mensagem atual (ou envia nova se não houver mensagem para editar)
+  if (ctx.session.messageIdToEdit && ctx.session.chatId) {
+    await ctx.telegram.editMessageText(
+      ctx.session.chatId,
+      ctx.session.messageIdToEdit,
+      undefined,
+      text,
+      { reply_markup: { inline_keyboard: buttons.map(b => [{ text: b.text, callback_data: b.callback_data }]) } }
+    );
+  } else {
+    const sent = await ctx.reply(text, {
+      reply_markup: { inline_keyboard: buttons.map(b => [{ text: b.text, callback_data: b.callback_data }]) },
+    });
+    if (sent.message_id) {
+      ctx.session.messageIdToEdit = sent.message_id;
+      ctx.session.chatId = ctx.chat!.id;
     }
-  );
+  }
 }
 
-// Ranking de produtos mais vendidos
-export async function rankProducts(ctx: Context) {
+async function getTopProducts(): Promise<string> {
   const result = await prisma.order.groupBy({
     by: ['productId'],
     where: { status: 'PAID' },
@@ -30,58 +60,19 @@ export async function rankProducts(ctx: Context) {
     orderBy: { _count: { productId: 'desc' } },
     take: 10,
   });
-
   const productIds = result.map(r => r.productId);
-  const products = await prisma.product.findMany({
-    where: { id: { in: productIds } },
-  });
-  const productMap = new Map(products.map(p => [p.id, p]));
+  const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
+  const map = new Map(products.map(p => [p.id, p]));
 
-  let text = `📦 SERVIÇOS MAIS VENDIDOS\n\n`;
+  let text = '🏆 Ranking dos serviços mais vendidos (deste mês)\n\n';
   result.forEach((r, i) => {
-    const product = productMap.get(r.productId);
-    text += `${i + 1}º ${product?.name || 'Desconhecido'} - ${r._count.productId} vendas\n`;
+    const p = map.get(r.productId);
+    text += `${i + 1}°) ${p?.name || 'Desconhecido'} ${i < 3 ? ['🥇', '🥈', '🥉'][i] : ''} - Com ${r._count.productId} pedidos\n`;
   });
-
-  await ctx.editMessage(text, {
-    reply_markup: {
-      inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'menu_ranking' }]],
-    },
-  });
+  return text;
 }
 
-// Ranking de usuários que mais compraram (por valor)
-export async function rankUsersByPurchases(ctx: Context) {
-  const result = await prisma.order.groupBy({
-    by: ['userId'],
-    where: { status: 'PAID' },
-    _sum: { totalPrice: true },
-    orderBy: { _sum: { totalPrice: 'desc' } },
-    take: 10,
-  });
-
-  const userIds = result.map(r => r.userId);
-  const users = await prisma.user.findMany({
-    where: { id: { in: userIds } },
-  });
-  const userMap = new Map(users.map(u => [u.id, u]));
-
-  let text = `👥 USUÁRIOS QUE MAIS COMPRARAM\n\n`;
-  result.forEach((r, i) => {
-    const user = userMap.get(r.userId);
-    const nome = user?.username || user?.firstName || 'Desconhecido';
-    text += `${i + 1}º ${nome} - ${formatCurrency(r._sum.totalPrice || 0)}\n`;
-  });
-
-  await ctx.editMessage(text, {
-    reply_markup: {
-      inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'menu_ranking' }]],
-    },
-  });
-}
-
-// Ranking de usuários que mais recarregaram
-export async function rankUsersByRecharge(ctx: Context) {
+async function getTopRecharges(): Promise<string> {
   const result = await prisma.recharge.groupBy({
     by: ['userId'],
     where: { status: 'APPROVED' },
@@ -89,43 +80,49 @@ export async function rankUsersByRecharge(ctx: Context) {
     orderBy: { _sum: { amount: 'desc' } },
     take: 10,
   });
-
   const userIds = result.map(r => r.userId);
-  const users = await prisma.user.findMany({
-    where: { id: { in: userIds } },
-  });
-  const userMap = new Map(users.map(u => [u.id, u]));
+  const users = await prisma.user.findMany({ where: { id: { in: userIds } } });
+  const map = new Map(users.map(u => [u.id, u]));
 
-  let text = `💰 USUÁRIOS QUE MAIS RECARREGARAM\n\n`;
+  let text = '🏆 Ranking dos usuários que mais recarregaram (deste mês)\n\n';
   result.forEach((r, i) => {
-    const user = userMap.get(r.userId);
-    const nome = user?.username || user?.firstName || 'Desconhecido';
-    text += `${i + 1}º ${nome} - ${formatCurrency(r._sum.amount || 0)}\n`;
+    const u = map.get(r.userId);
+    const nome = u?.username || u?.firstName || 'Desconhecido';
+    text += `${i + 1}°) ${nome} ${i < 3 ? ['🥇', '🥈', '🥉'][i] : ''} - R$ ${(r._sum.amount || 0).toFixed(2)}\n`;
   });
-
-  await ctx.editMessage(text, {
-    reply_markup: {
-      inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'menu_ranking' }]],
-    },
-  });
+  return text;
 }
 
-// Ranking de maiores saldos
-export async function rankByBalance(ctx: Context) {
+async function getTopBalances(): Promise<string> {
   const users = await prisma.user.findMany({
     orderBy: { balance: 'desc' },
     take: 10,
   });
-
-  let text = `💎 MAIORES SALDOS\n\n`;
+  let text = '🏆 Ranking dos usuários com mais saldo no bot\n\n';
   users.forEach((u, i) => {
     const nome = u.username || u.firstName || 'Desconhecido';
-    text += `${i + 1}º ${nome} - ${formatCurrency(u.balance)}\n`;
+    text += `${i + 1}°) ${nome} ${i < 3 ? ['🥇', '🥈', '🥉'][i] : ''} - ${formatCurrency(u.balance)}\n`;
   });
+  return text;
+}
 
-  await ctx.editMessage(text, {
-    reply_markup: {
-      inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'menu_ranking' }]],
-    },
+async function getTopBuyers(): Promise<string> {
+  const result = await prisma.order.groupBy({
+    by: ['userId'],
+    where: { status: 'PAID' },
+    _sum: { totalPrice: true },
+    orderBy: { _sum: { totalPrice: 'desc' } },
+    take: 10,
   });
+  const userIds = result.map(r => r.userId);
+  const users = await prisma.user.findMany({ where: { id: { in: userIds } } });
+  const map = new Map(users.map(u => [u.id, u]));
+
+  let text = '🏆 Ranking dos usuários que mais compraram (deste mês)\n\n';
+  result.forEach((r, i) => {
+    const u = map.get(r.userId);
+    const nome = u?.username || u?.firstName || 'Desconhecido';
+    text += `${i + 1}°) ${nome} ${i < 3 ? ['🥇', '🥈', '🥉'][i] : ''} - ${formatCurrency(r._sum.totalPrice || 0)}\n`;
+  });
+  return text;
 }
