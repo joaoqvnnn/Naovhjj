@@ -7,6 +7,8 @@ import { renderPage } from './layout';
 import { generateTwoFactorCode, validateTwoFactorCode } from '../services/twoFactor';
 import { deviceSecurityMiddleware } from '../middlewares/deviceSecurity';
 import { logAction } from '../services/logger';
+import { generatePasswordResetCode } from '../services/passwordReset';
+import { sendPasswordResetCode } from '../services/email';
 
 const router = Router();
 
@@ -14,6 +16,7 @@ const router = Router();
 router.get('/login', (req, res) => {
   const content = `
     <h2>Login Seguro</h2>
+    <p>Entre com seu Telegram ID e senha.</p>
     <form method="POST" action="/web/auth/login">
       <label>Telegram ID</label>
       <input type="text" name="telegramId" required />
@@ -57,10 +60,20 @@ router.post('/login', async (req, res) => {
     return res.redirect(`/web/auth/2fa?token=${tempToken}`);
   }
 
-  // Sem 2FA: gera token JWT final e aplica middleware de dispositivo
+  // Sem 2FA: gera token JWT final
   const token = jwt.sign({ userId: user.id }, config.web.secret, { expiresIn: '15m' });
   res.cookie('auth_token', token, { httpOnly: true });
-  (req as any).userId = user.id; // para o middleware
+
+  // Registra log
+  await logAction({ action: 'WEB_LOGIN_SUCCESS', userId: user.id, details: { ip: req.ip } });
+
+  // Aplica verificação de dispositivo (se habilitado)
+  const deviceSecuritySetting = await prisma.setting.findUnique({ where: { key: 'device_security' } });
+  if (deviceSecuritySetting?.value?.enabled) {
+    // Redireciona para rota protegida que verificará o dispositivo
+    return res.redirect('/web/saque');
+  }
+
   return res.redirect('/web/saque');
 });
 
@@ -94,6 +107,9 @@ router.post('/2fa', async (req, res) => {
     // 2FA válido: emite token final
     const finalToken = jwt.sign({ userId: decoded.userId }, config.web.secret, { expiresIn: '15m' });
     res.cookie('auth_token', finalToken, { httpOnly: true });
+
+    await logAction({ action: 'WEB_2FA_SUCCESS', userId: decoded.userId });
+
     return res.redirect('/web/saque');
   } catch {
     return res.status(400).send('Token inválido.');
@@ -121,11 +137,11 @@ router.post('/esqueci-senha', async (req, res) => {
     return res.send(renderPage('Recuperar Senha', '<p class="success">Se o e-mail estiver cadastrado, você receberá um código.</p>'));
   }
 
-  // Gera código de recuperação (reutiliza serviço de passwordReset, mas aqui simplificamos)
-  const { generatePasswordResetCode } = await import('../services/passwordReset');
   const code = await generatePasswordResetCode(user.id);
-  const { sendPasswordResetCode } = await import('../services/email');
-  await sendPasswordResetCode(email, code);
+  const sent = await sendPasswordResetCode(email, code);
+  if (!sent) {
+    return res.status(500).send(renderPage('Erro', '<p class="error">Erro ao enviar e-mail</p>'));
+  }
 
   return res.send(renderPage('Recuperar Senha', '<p class="success">Código enviado.</p>'));
 });
