@@ -2,7 +2,6 @@ import { Context } from '../types/context';
 import prisma from '../database';
 import { isAdmin } from './userManagement';
 import { startCapture } from '../middlewares/capture';
-import { logAction } from '../services/logger';
 
 export async function showGeneralConfig(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
@@ -17,18 +16,25 @@ export async function showGeneralConfig(ctx: Context) {
   const sep = separator?.value || '===';
   const maint = maintenance?.value?.enabled || false;
 
-  await ctx.editMessage(`⚙️ CONFIGURAÇÕES GERAIS\n\nDestino logs: ${dest}\nSuporte: ${sup}\nSeparador: ${sep}\nManutenção: ${maint ? 'ON' : 'OFF'}`, {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: 'MUDAR SUPORTE', callback_data: 'config_support' }],
-        [{ text: 'MUDAR SEPARADOR', callback_data: 'config_separator' }],
-        [{ text: 'MUDAR DESTINO LOG', callback_data: 'config_logdest' }],
-        [{ text: `MANUTENÇÃO (${maint ? 'on' : 'off'})`, callback_data: 'config_maintenance' }],
-        [{ text: 'REINICIAR BOT', callback_data: 'config_restart' }],
-        [{ text: '⏮️ Voltar', callback_data: 'admin_config' }],
-      ],
-    },
-  });
+  await ctx.editMessage(
+    `⚙️ CONFIGURAÇÕES GERAIS\n\n` +
+    `Destino logs: ${dest}\n` +
+    `Suporte: ${sup}\n` +
+    `Separador: ${sep}\n` +
+    `Manutenção: ${maint ? 'ON' : 'OFF'}`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'MUDAR SUPORTE', callback_data: 'config_support' }],
+          [{ text: 'MUDAR SEPARADOR', callback_data: 'config_separator' }],
+          [{ text: 'MUDAR DESTINO LOG', callback_data: 'config_logdest' }],
+          [{ text: `MANUTENÇÃO (${maint ? 'on' : 'off'})`, callback_data: 'config_maintenance' }],
+          [{ text: 'REINICIAR BOT', callback_data: 'config_restart' }],
+          [{ text: '⏮️ Voltar', callback_data: 'admin_menu_config' }],
+        ],
+      },
+    }
+  );
 }
 
 export async function setSupport(ctx: Context) {
@@ -79,5 +85,5 @@ export async function toggleMaintenance(ctx: Context) {
 export async function restartBot(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
   await ctx.editMessage('🔄 Reiniciando bot...');
-  process.exit(0); // Render reiniciará
+  process.exit(0);
 }
