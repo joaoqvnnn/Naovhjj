@@ -13,6 +13,7 @@ import { showAntifloodConfig, setAntifloodParam } from './antifloodConfig';
 import { showNotificationConfig, toggleNotification } from './notifications';
 import { showWithdrawalMenu, viewWithdrawal, approveWithdrawal, rejectWithdrawal, reprocessWithdrawal } from './withdrawalReview';
 import { showManualPixPending, viewManualPix, confirmManualPixAction, rejectManualPixAction } from './pixManual';
+import { handleWhatsAppAntiFloodMenu, handleWhatsAppAntiFloodSet } from '../handlers/whatsappHandlers';
 
 // Roteador central de callbacks administrativos
 export async function routeAdminCallback(ctx: Context, callbackData: string) {
@@ -106,9 +107,29 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
     if (callbackData === 'bcast_cancel') return ctx.editMessage('Transmissão cancelada.');
   }
 
-  // Anti-flood
-  if (callbackData === 'admin_actions_antiflood') return showAntifloodConfig(ctx);
+  // Anti-flood Telegram
+  if (callbackData === 'antiflood_menu') return showAntifloodConfig(ctx);
   if (callbackData.startsWith('antiflood_set_')) return setAntifloodParam(ctx, callbackData.split('_')[2]);
+
+  // Anti-flood WhatsApp
+  if (callbackData === 'wa_af_menu') return handleWhatsAppAntiFloodMenu(ctx);
+  if (callbackData.startsWith('wa_af_set_')) {
+    const param = callbackData.split('_')[3]; // max, interval, block
+    return handleWhatsAppAntiFloodSet(ctx, param);
+  }
+
+  // Menu de anti-flood principal (escolha entre Telegram e WhatsApp)
+  if (callbackData === 'admin_actions_antiflood') {
+    return ctx.editMessage('🛡️ Anti-Flood\n\nEscolha:', {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Telegram', callback_data: 'antiflood_menu' }],
+          [{ text: 'WhatsApp', callback_data: 'wa_af_menu' }],
+          [{ text: '⏮️ Voltar', callback_data: 'admin_menu_actions' }],
+        ],
+      },
+    });
+  }
 
   // Notificações
   if (callbackData === 'admin_actions_notifications') return showNotificationConfig(ctx);
