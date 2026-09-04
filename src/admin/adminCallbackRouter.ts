@@ -21,6 +21,9 @@ import { showTranscriptionConfig, setTranscriptionKey } from './transcriptionCon
 import { showGiftCardAdminMenu, createGiftCard, createGiftCardBatch, listGiftCards, viewGiftCard, disableGiftCard, deleteGiftCard } from './giftCardAdmin';
 import { checkUpdates, viewSystemLogs, cleanOldData } from './updatesActions';
 import { showSecurityConfig, toggle2FA, toggleDeviceSecurity, toggleStrictDevice, setMaxPasswordAttempts, setBlockDuration } from './securityConfig';
+import { showUsersMenu, listUsers, searchUser, viewUserDetails, editUserBalance, toggleUserBlock, sendMessageToUser } from './userManagementFull';
+import { generateUserHistoryPdf } from '../flows/userHistoryPdf';
+import { startCapture } from '../middlewares/capture';
 
 export async function routeAdminCallback(ctx: Context, callbackData: string) {
   // Dashboard e menus principais
@@ -59,7 +62,20 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'aff_set_multiplier') return setAffiliateMultiplier(ctx);
 
   // Usuários
-  if (callbackData === 'admin_config_users') return ctx.editMessage('Funcionalidade de usuários em breve.');
+  if (callbackData === 'admin_config_users') return showUsersMenu(ctx);
+  if (callbackData === 'users_menu') return showUsersMenu(ctx);
+  if (callbackData === 'users_list') return listUsers(ctx);
+  if (callbackData.startsWith('users_page_')) return listUsers(ctx, parseInt(callbackData.split('_')[2]));
+  if (callbackData === 'users_search') {
+    return startCapture(ctx, 'users_search_term', 'Digite o ID, Telegram ID ou username para pesquisar:', {
+      validate: async (input) => input.trim().length > 0 ? null : 'Digite algo.',
+      onSuccess: async (ctx, term) => searchUser(ctx, term),
+    });
+  }
+  if (callbackData.startsWith('user_edit_balance_')) return editUserBalance(ctx, parseInt(callbackData.split('_')[3]));
+  if (callbackData.startsWith('user_toggle_block_')) return toggleUserBlock(ctx, parseInt(callbackData.split('_')[3]));
+  if (callbackData.startsWith('user_message_')) return sendMessageToUser(ctx, parseInt(callbackData.split('_')[2]));
+  if (callbackData.startsWith('user_pdf_')) return generateUserHistoryPdf(ctx, parseInt(callbackData.split('_')[2]));
 
   // Pix
   if (callbackData === 'admin_config_pix') return showPixConfig(ctx);
