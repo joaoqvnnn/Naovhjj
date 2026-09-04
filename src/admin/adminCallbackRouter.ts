@@ -4,7 +4,7 @@ import { showGeneralConfig, setSupport, setSeparator, setLogDestination, toggleM
 import { listAdmins, addAdmin, removeAdmin } from './adminActions';
 import { showAffiliateConfig, toggleAffiliateSystem, setAffiliatePoints, setAffiliateMin, setAffiliateMultiplier } from './affiliateConfig';
 import { showPixConfig, togglePixMode, setManualPixKey, toggleQrCode, toggleCopyButton, setExpiration, setMinAmount, setMaxAmount, editPixMessage } from './pixConfig';
-import { showLoginsPanel, addLogins, removeLogin, removeByPlatform, zeroStock, detailedStock, changeServicePrice, changeAllPrices } from './loginsStock';
+import { showLoginsPanel, addLogins, removeLogin, removeByPlatform, zeroStock, detailedStock, changeServicePrice, changeAllPrices } from './loginsStockFull';
 import { showResearchConfig, addResearchImage, removeResearchImage } from './researchConfig';
 import { showTemplateList, viewTemplate, editTemplateText, editTemplateImage, resetTemplate } from './templateEditor';
 import { showButtonList, viewButtonConfig, addButton, editButton, removeButton, reorderButtons, resetButtons } from './buttonEditorFull';
@@ -26,6 +26,7 @@ import { generateUserHistoryPdf } from '../flows/userHistoryPdf';
 import { startCapture } from '../middlewares/capture';
 import { showSobreConfig, editSobreContent } from './sobreConfig';
 import { showSupportConfig, editSupportLink, editBotVersion, editStoreName } from './supportConfig';
+import { listProducts, createProduct, editProduct, editProductName, editProductPrice, editProductDescription, editProductImage, toggleProduct, deleteProduct, listCategories, createCategory, editCategoryName, deleteCategory } from './productCategoryAdminFull';
 
 export async function routeAdminCallback(ctx: Context, callbackData: string) {
   // Dashboard e menus principais
@@ -87,6 +88,29 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData.startsWith('user_toggle_block_')) return toggleUserBlock(ctx, parseInt(callbackData.split('_')[3]));
   if (callbackData.startsWith('user_message_')) return sendMessageToUser(ctx, parseInt(callbackData.split('_')[2]));
   if (callbackData.startsWith('user_pdf_')) return generateUserHistoryPdf(ctx, parseInt(callbackData.split('_')[2]));
+
+  // Produtos e Categorias
+  if (callbackData === 'admin_config_products') return listProducts(ctx);
+  if (callbackData === 'prod_list') return listProducts(ctx);
+  if (callbackData.startsWith('products_page_')) return listProducts(ctx, parseInt(callbackData.split('_')[2]));
+  if (callbackData === 'prod_new') return createProduct(ctx);
+  if (callbackData.startsWith('prod_edit_') && !callbackData.startsWith('prod_edit_name_') && !callbackData.startsWith('prod_edit_price_') && !callbackData.startsWith('prod_edit_desc_') && !callbackData.startsWith('prod_edit_image_')) {
+    return editProduct(ctx, parseInt(callbackData.split('_')[2]));
+  }
+  if (callbackData.startsWith('prod_edit_name_')) return editProductName(ctx, parseInt(callbackData.split('_')[3]));
+  if (callbackData.startsWith('prod_edit_price_')) return editProductPrice(ctx, parseInt(callbackData.split('_')[3]));
+  if (callbackData.startsWith('prod_edit_desc_')) return editProductDescription(ctx, parseInt(callbackData.split('_')[3]));
+  if (callbackData.startsWith('prod_edit_image_')) return editProductImage(ctx, parseInt(callbackData.split('_')[3]));
+  if (callbackData.startsWith('prod_toggle_')) return toggleProduct(ctx, parseInt(callbackData.split('_')[2]));
+  if (callbackData.startsWith('prod_delete_')) return deleteProduct(ctx, parseInt(callbackData.split('_')[2]));
+
+  if (callbackData === 'cat_menu') return listCategories(ctx);
+  if (callbackData === 'cat_new') return createCategory(ctx);
+  if (callbackData.startsWith('cat_edit_') && !callbackData.startsWith('cat_edit_name_')) {
+    return editCategoryName(ctx, parseInt(callbackData.split('_')[2]));
+  }
+  if (callbackData.startsWith('cat_edit_name_')) return editCategoryName(ctx, parseInt(callbackData.split('_')[3]));
+  if (callbackData.startsWith('cat_delete_')) return deleteCategory(ctx, parseInt(callbackData.split('_')[2]));
 
   // Pix
   if (callbackData === 'admin_config_pix') return showPixConfig(ctx);
