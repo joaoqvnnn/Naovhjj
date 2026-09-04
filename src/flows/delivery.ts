@@ -11,42 +11,42 @@ export async function startWhatsAppDelivery(ctx: Context, orderId: number) {
     include: { user: true, product: true, stockUnits: true },
   });
 
-  if (!order) return ctx.editMessageText('Pedido não encontrado.');
+  if (!order) return ctx.editMessageText('Order not found.');
 
   if (order.user.whatsapp && normalizePhone(order.user.whatsapp)) {
     const normalized = normalizePhone(order.user.whatsapp)!;
-    const messageText = `🛍️ *Compra realizada!*\n\n` +
-      `Produto: ${order.product.name}\n` +
-      `Valor: R$ ${order.totalPrice}\n` +
-      `Data: ${order.createdAt.toLocaleDateString('pt-BR')}\n` +
-      `Clique no botão abaixo para ativar:`;
+    const messageText = `🛍️ *Purchase completed!*\n\n` +
+      `Product: ${order.product.name}\n` +
+      `Amount: R$ ${order.totalPrice}\n` +
+      `Date: ${order.createdAt.toLocaleDateString('pt-BR')}\n` +
+      `Click the button below to activate:`;
 
     await sendWhatsAppButton(normalized, messageText, [
-      { type: 'reply', displayText: 'Ativar', id: 'ativar' },
+      { type: 'reply', displayText: 'Activate', id: 'activate' },
     ]);
 
-    await ctx.editMessageText('✅ Compra enviada para o WhatsApp!');
+    await ctx.editMessageText('✅ Purchase sent to WhatsApp!');
     return;
   }
 
-  await startCapture(ctx, 'whatsapp_entrega', 'Digite seu número de WhatsApp (com DDD):', {
-    validate: async (input) => normalizePhone(input) ? null : 'Número inválido.',
+  await startCapture(ctx, 'whatsapp_delivery', 'Enter your WhatsApp number (with DDD):', {
+    validate: async (input) => normalizePhone(input) ? null : 'Invalid number.',
     onSuccess: async (ctx, phone) => {
       const normalized = normalizePhone(phone)!;
       await prisma.user.update({ where: { id: order.userId }, data: { whatsapp: normalized } });
       await prisma.order.update({ where: { id: orderId }, data: { whatsapp: normalized, deliveryMethod: 'WHATSAPP' } });
 
-      const messageText = `🛍️ *Compra realizada!*\n\n` +
-        `Produto: ${order.product.name}\n` +
-        `Valor: R$ ${order.totalPrice}\n` +
-        `Data: ${order.createdAt.toLocaleDateString('pt-BR')}\n` +
-        `Clique no botão abaixo para ativar:`;
+      const messageText = `🛍️ *Purchase completed!*\n\n` +
+        `Product: ${order.product.name}\n` +
+        `Amount: R$ ${order.totalPrice}\n` +
+        `Date: ${order.createdAt.toLocaleDateString('pt-BR')}\n` +
+        `Click the button below to activate:`;
 
       await sendWhatsAppButton(normalized, messageText, [
-        { type: 'reply', displayText: 'Ativar', id: 'ativar' },
+        { type: 'reply', displayText: 'Activate', id: 'activate' },
       ]);
 
-      await ctx.editMessageText('✅ Compra enviada para o WhatsApp!');
+      await ctx.editMessageText('✅ Purchase sent to WhatsApp!');
     },
   });
 }
@@ -57,7 +57,7 @@ export async function startEmailDelivery(ctx: Context, orderId: number) {
     include: { user: true, product: true, stockUnits: true },
   });
 
-  if (!order) return ctx.editMessageText('Pedido não encontrado.');
+  if (!order) return ctx.editMessageText('Order not found.');
 
   if (order.user.email && isValidEmail(order.user.email)) {
     const success = await sendPurchaseEmail({
@@ -75,15 +75,15 @@ export async function startEmailDelivery(ctx: Context, orderId: number) {
     });
 
     if (success) {
-      await ctx.editMessageText('📧 E-mail enviado com sucesso!');
+      await ctx.editMessageText('📧 Email sent successfully!');
     } else {
-      await ctx.editMessageText('❌ Falha ao enviar e-mail.');
+      await ctx.editMessageText('❌ Failed to send email.');
     }
     return;
   }
 
-  await startCapture(ctx, 'email_entrega', 'Digite seu e-mail para receber:', {
-    validate: async (input) => isValidEmail(input) ? null : 'E-mail inválido.',
+  await startCapture(ctx, 'email_delivery', 'Enter your email to receive:', {
+    validate: async (input) => isValidEmail(input) ? null : 'Invalid email.',
     onSuccess: async (ctx, email) => {
       await prisma.user.update({ where: { id: order.userId }, data: { email } });
 
@@ -102,9 +102,9 @@ export async function startEmailDelivery(ctx: Context, orderId: number) {
       });
 
       if (success) {
-        await ctx.editMessageText('📧 E-mail enviado com sucesso!');
+        await ctx.editMessageText('📧 Email sent successfully!');
       } else {
-        await ctx.editMessageText('❌ Falha ao enviar e-mail.');
+        await ctx.editMessageText('❌ Failed to send email.');
       }
     },
   });
