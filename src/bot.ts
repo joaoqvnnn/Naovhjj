@@ -18,6 +18,8 @@ import { startChangeWhatsApp } from './flows/alterarDados';
 import { startWhatsAppDelivery } from './flows/delivery';
 import { handleAttendanceButton, handleHumanButton, handleExitSupport } from './handlers/attendance';
 import { handleSupportMessage } from './flows/aiSupport';
+import { showAffiliatePoints, convertPointsToBalance } from './flows/affiliatePoints';
+import { showNotificationTemplateMenu, viewNotificationTemplate, editNotificationTemplate, resetNotificationTemplate } from './admin/notificationTemplates';
 
 const bot = new Telegraf<Context>(config.botToken);
 
@@ -111,6 +113,45 @@ bot.action(/^entregar_whatsapp_(\d+)$/, async (ctx) => {
 });
 
 // ==========================
+// CALLBACKS DE PONTOS DE AFILIADO
+// ==========================
+bot.action('menu_pontos', async (ctx) => {
+  await ctx.answerCbQuery();
+  await showAffiliatePoints(ctx);
+});
+
+bot.action('aff_convert_points', async (ctx) => {
+  await ctx.answerCbQuery();
+  await convertPointsToBalance(ctx);
+});
+
+// ==========================
+// CALLBACKS DE NOTIFICAÇÕES ADMIN
+// ==========================
+bot.action('admin_actions_notifications', async (ctx) => {
+  await ctx.answerCbQuery();
+  await showNotificationTemplateMenu(ctx);
+});
+
+bot.action(/^notiftpl_(.+)$/, async (ctx) => {
+  const eventKey = ctx.match[1];
+  await ctx.answerCbQuery();
+  await viewNotificationTemplate(ctx, eventKey);
+});
+
+bot.action(/^notiftpledit_(.+)$/, async (ctx) => {
+  const eventKey = ctx.match[1];
+  await ctx.answerCbQuery();
+  await editNotificationTemplate(ctx, eventKey);
+});
+
+bot.action(/^notiftplreset_(.+)$/, async (ctx) => {
+  const eventKey = ctx.match[1];
+  await ctx.answerCbQuery();
+  await resetNotificationTemplate(ctx, eventKey);
+});
+
+// ==========================
 // CALLBACKS DINÂMICOS GERAIS
 // ==========================
 bot.action('menu_recarregar', async (ctx) => { await goToScreen(ctx, 'recarregar'); });
@@ -135,7 +176,8 @@ bot.action(/.*/, async (ctx) => {
     callbackData.startsWith('notif_') ||
     callbackData.startsWith('saque_') ||
     callbackData.startsWith('pixmanual_') ||
-    callbackData.startsWith('admin_updates_')
+    callbackData.startsWith('admin_updates_') ||
+    callbackData.startsWith('wa_af_') // anti-flood WhatsApp
   ) {
     await routeAdminCallback(ctx, callbackData);
   } else {
