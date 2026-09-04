@@ -85,5 +85,5 @@ export async function toggleMaintenance(ctx: Context) {
 export async function restartBot(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
   await ctx.editMessage('🔄 Reiniciando bot...');
-  process.exit(0);
+  setTimeout(() => process.exit(0), 1000);
 }
