@@ -2,7 +2,7 @@ import axios from 'axios';
 import prisma from '../database';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
-const OPENAI_MODEL = 'gpt-4o-mini';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 export async function generateAIResponse(userId: number, userMessage: string): Promise<string> {
   if (!OPENAI_API_KEY) {
@@ -37,7 +37,7 @@ ${ultimasCompras}
 Regras:
 - Responda com base nos dados fornecidos.
 - Se não souber, diga que não tem essa informação.
-- Se o usuário pedir para falar com humano, oriente a clicar no botão "Falar com humano".
+- Se o usuário pedir para falar com humano, oriente a usar o botão "Falar com humano".
 - Seja educado e objetivo.`;
 
   try {
