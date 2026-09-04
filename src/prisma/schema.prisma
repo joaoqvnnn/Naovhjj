@@ -1,0 +1,476 @@
+// Prisma Schema para Larizinha Store
+// Documentação: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==============================
+// ENUMS
+// ==============================
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+  INACTIVE
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  FINANCE
+  STOCK
+  SUPPORT
+  ANALYST
+  USER
+}
+
+enum PaymentMethod {
+  PIX
+  WALLET
+  GIFT_CARD
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+enum OrderStatus {
+  RESERVED
+  PAID
+  DELIVERED
+  CANCELLED
+  EXPIRED
+}
+
+enum DeliveryMethod {
+  EMAIL
+  WHATSAPP
+  TELEGRAM
+}
+
+enum GiftCardStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  DISABLED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PROCESSING
+  PAID
+  REJECTED
+}
+
+enum WithdrawalMethod {
+  PIX
+  BANK_TRANSFER
+}
+
+// ==============================
+// USUÁRIOS
+// ==============================
+
+model User {
+  id                Int       @id @default(autoincrement())
+  telegramId        BigInt    @unique
+  username          String?
+  firstName         String?
+  lastName          String?
+  email             String?
+  phone             String?
+  whatsapp          String?
+  passwordHash      String?   // senha única para ativação/saque
+  balance           Decimal   @default(0) @db.Decimal(10, 2)
+  bonusBalance      Decimal   @default(0) @db.Decimal(10, 2)
+  status            UserStatus @default(ACTIVE)
+  role              UserRole  @default(USER)
+  referralCode      String?   @unique
+  referredByUserId  Int?
+  referredBy        User?     @relation("Referral", fields: [referredByUserId], references: [id])
+  referredUsers     User[]    @relation("Referral")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastActivityAt    DateTime?
+
+  affiliateBalance  Decimal   @default(0) @db.Decimal(10, 2)
+  affiliatePoints   Int       @default(0)
+  totalSpent        Decimal   @default(0) @db.Decimal(10, 2)
+  totalRecharged    Decimal   @default(0) @db.Decimal(10, 2)
+
+  orders            Order[]
+  payments          Payment[]
+  giftCards         GiftCard[]   @relation("GiftCardUser")
+  withdrawals       Withdrawal[]
+  logs              Log[]
+  alertPreferences  AlertPreference[]
+  commissions       Commission[]
+  sessions          Session[]
+  passwordResetCodes PasswordResetCode[]
+  userCoupons       UserCoupon[]
+  devices           Device[]
+  twoFactorCodes    TwoFactorCode[]
+}
+
+// ==============================
+// CATEGORIAS
+// ==============================
+
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String
+  emoji       String?
+  description String?
+  order       Int       @default(0)
+  isActive    Boolean   @default(true)
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// ==============================
+// PRODUTOS
+// ==============================
+
+model Product {
+  id          Int       @id @default(autoincrement())
+  categoryId  Int?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  name        String
+  emoji       String?
+  description String?
+  imageUrl    String?
+  price       Decimal   @db.Decimal(10, 2)
+  guarantee   String?
+  duration    String?
+  isActive    Boolean   @default(true)
+  order       Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  stockUnits  StockUnit[]
+  orders      Order[]
+  alertPrefs  AlertPreference[]
+}
+
+// ==============================
+// ESTOQUE INDIVIDUAL
+// ==============================
+
+model StockUnit {
+  id           Int       @id @default(autoincrement())
+  productId    Int
+  product      Product   @relation(fields: [productId], references: [id])
+  content      String    // conteúdo: login, senha, email, etc. (pode ser JSON)
+  isReserved   Boolean   @default(false)
+  reservedUntil DateTime?
+  reservedByUserId Int?
+  reservedBy   User?     @relation(fields: [reservedByUserId], references: [id])
+  isSold       Boolean   @default(false)
+  soldAt       DateTime?
+  orderId      Int?
+  order        Order?    @relation(fields: [orderId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// ==============================
+// PEDIDOS
+// ==============================
+
+model Order {
+  id            Int           @id @default(autoincrement())
+  userId        Int
+  user          User          @relation(fields: [userId], references: [id])
+  productId     Int
+  product       Product       @relation(fields: [productId], references: [id])
+  quantity      Int           @default(1)
+  unitPrice     Decimal       @db.Decimal(10, 2)
+  totalPrice    Decimal       @db.Decimal(10, 2)
+  status        OrderStatus   @default(RESERVED)
+  deliveryMethod DeliveryMethod?
+  email         String?
+  whatsapp      String?
+  deliveredAt   DateTime?
+  expiresAt     DateTime?
+  accessCount   Int           @default(0)
+  maxAccess     Int?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  stockUnits    StockUnit[]
+  payment       Payment?
+}
+
+// ==============================
+// PAGAMENTOS
+// ==============================
+
+model Payment {
+  id            Int           @id @default(autoincrement())
+  userId        Int
+  user          User          @relation(fields: [userId], references: [id])
+  orderId       Int?          @unique
+  order         Order?        @relation(fields: [orderId], references: [id])
+  method        PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  amount        Decimal       @db.Decimal(10, 2)
+  externalId    String?
+  qrCode        String?
+  qrCodeImage   String?
+  expiresAt     DateTime?
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+// ==============================
+// RECARGAS DE SALDO
+// ==============================
+
+model Recharge {
+  id          Int           @id @default(autoincrement())
+  userId      Int
+  user        User          @relation(fields: [userId], references: [id])
+  amount      Decimal       @db.Decimal(10, 2)
+  bonus       Decimal       @default(0) @db.Decimal(10, 2)
+  paymentId   Int?
+  payment     Payment?      @relation(fields: [paymentId], references: [id])
+  status      PaymentStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+// ==============================
+// AFILIADOS / COMISSÕES
+// ==============================
+
+model Commission {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  orderId     Int?
+  order       Order?   @relation(fields: [orderId], references: [id])
+  amount      Decimal  @db.Decimal(10, 2)
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ==============================
+// SAQUES
+// ==============================
+
+model Withdrawal {
+  id          Int              @id @default(autoincrement())
+  userId      Int
+  user        User             @relation(fields: [userId], references: [id])
+  amount      Decimal          @db.Decimal(10, 2)
+  fee         Decimal          @default(0) @db.Decimal(10, 2)
+  netAmount   Decimal          @db.Decimal(10, 2)
+  method      WithdrawalMethod
+  pixKey      String?
+  bankDetails Json?
+  status      WithdrawalStatus @default(PENDING)
+  externalId  String?
+  processedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+// ==============================
+// GIFT CARDS
+// ==============================
+
+model GiftCard {
+  id          Int            @id @default(autoincrement())
+  code        String         @unique
+  value       Decimal        @db.Decimal(10, 2)
+  status      GiftCardStatus @default(ACTIVE)
+  expiresAt   DateTime?
+  usedAt      DateTime?
+  usedByUserId Int?
+  usedBy      User?          @relation("GiftCardUser", fields: [usedByUserId], references: [id])
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+// ==============================
+// PREFERÊNCIAS DE ALERTA DE ESTOQUE
+// ==============================
+
+model AlertPreference {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id])
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId])
+}
+
+// ==============================
+// LOGS
+// ==============================
+
+model Log {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  details   Json?
+  ip        String?
+  createdAt DateTime @default(now())
+}
+
+// ==============================
+// SESSÕES (para autenticação Web)
+// ==============================
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==============================
+// CONFIGURAÇÕES GERAIS
+// ==============================
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+// ==============================
+// MENSAGENS PERSONALIZADAS (templates)
+// ==============================
+
+model MessageTemplate {
+  key       String   @id
+  text      String
+  imageUrl  String?
+  buttons   Json?
+  updatedAt DateTime @updatedAt
+}
+
+// ==============================
+// BOTÕES CONFIGURÁVEIS
+// ==============================
+
+model ButtonConfig {
+  key       String   @id
+  buttons   Json
+  updatedAt DateTime @updatedAt
+}
+
+// ==============================
+// CÓDIGOS DE RECUPERAÇÃO DE SENHA
+// ==============================
+
+model PasswordResetCode {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  code      String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, code])
+}
+
+// ==============================
+// CÓDIGOS 2FA
+// ==============================
+
+model TwoFactorCode {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  code      String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// ==============================
+// DISPOSITIVOS (para segurança)
+// ==============================
+
+model Device {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  ip        String
+  userAgent String
+  lastUsedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+}
+
+// ==============================
+// PROMOÇÕES AGENDADAS
+// ==============================
+
+model ScheduledPromotion {
+  id          Int      @id @default(autoincrement())
+  message     String
+  scheduledAt DateTime
+  segment     String   // all, active, buyers, affiliates
+  sent        Boolean  @default(false)
+  sentAt      DateTime?
+  couponId    Int?
+  coupon      CouponPromotion? @relation(fields: [couponId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+// ==============================
+// CAMPANHAS DE CUPOM
+// ==============================
+
+model CouponPromotion {
+  id          Int       @id @default(autoincrement())
+  value       Decimal   @db.Decimal(10, 2)
+  expiresAt   DateTime
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  userCoupons UserCoupon[]
+  scheduledPromotions ScheduledPromotion[]
+}
+
+// ==============================
+// CUPONS DE USUÁRIO
+// ==============================
+
+model UserCoupon {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  user              User     @relation(fields: [userId], references: [id])
+  couponPromotionId Int
+  couponPromotion   CouponPromotion @relation(fields: [couponPromotionId], references: [id])
+  code              String   @unique
+  used              Boolean  @default(false)
+  usedAt            DateTime?
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+}
