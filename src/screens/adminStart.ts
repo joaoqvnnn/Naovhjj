@@ -14,7 +14,6 @@ registerScreen({
     const stats = await getAdminPersonalStats(user.id);
     if (!stats) return { text: 'Erro ao carregar estatísticas.' };
 
-    // Busca template personalizado para admin
     const template = await prisma.messageTemplate.findUnique({ where: { key: 'admin_start' } });
 
     let text = '';
@@ -24,8 +23,7 @@ registerScreen({
         .replace(/\{giftcards_resgatados\}/g, formatCurrency(stats.giftCardsResgatados))
         .replace(/\{link_afiliado\}/g, stats.referralLink)
         .replace(/\{quantidade_afiliados\}/g, String(stats.affiliateCount))
-        .replace(/\{pontos_indicacao\}/g, String(stats.affiliatePoints))
-        .replace(/\{total_gasto\}/g, formatCurrency(stats.totalGasto));
+        .replace(/\{pontos_indicacao\}/g, String(stats.affiliatePoints));
     } else {
       text = `LOGINS | CONTAS PREMIUM\n\n` +
         `Compras feitas: ${stats.comprasFeitas}\n` +
@@ -37,7 +35,6 @@ registerScreen({
         `Escolha uma opção:`;
     }
 
-    // Botões do admin
     const keyboard = {
       inline_keyboard: [
         [{ text: '📦 LOGINS | CONTAS PREMIUM', callback_data: 'admin_menu_config' }],
@@ -50,10 +47,8 @@ registerScreen({
       ],
     };
 
-    // Verifica se há imagem configurada para o template admin
     const imageUrl = template?.imageUrl;
     if (imageUrl) {
-      // Envia foto com legenda
       const sent = await ctx.replyWithPhoto(imageUrl, {
         caption: text,
         parse_mode: 'HTML',
@@ -63,7 +58,7 @@ registerScreen({
         ctx.session.messageIdToEdit = sent.message_id;
         ctx.session.chatId = ctx.chat!.id;
       }
-      return { text: '', keyboard: undefined }; // já enviado
+      return { text: '', keyboard: undefined };
     }
 
     return { text, keyboard };
