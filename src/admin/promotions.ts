@@ -2,12 +2,11 @@ import { Context } from '../types/context';
 import prisma from '../database';
 import { isAdmin } from './userManagement';
 import { startCapture } from '../middlewares/capture';
-import { logAction } from '../services/logger';
 
-// Menu principal de promoções
 export async function showPromotionsMenu(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
-  await ctx.editMessage('📣 Promoções e Cupons\n\nEscolha uma ação:', {
+
+  await ctx.editMessage('📣 Promoções e Cupons\n\nEscolha:', {
     reply_markup: {
       inline_keyboard: [
         [{ text: '➕ Nova promoção agendada', callback_data: 'promo_new_scheduled' }],
@@ -19,22 +18,16 @@ export async function showPromotionsMenu(ctx: Context) {
   });
 }
 
-// Inicia criação de promoção agendada
 export async function createScheduledPromotion(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
 
   await startCapture(ctx, 'promo_message', 'Digite o texto da promoção:', {
     validate: async (input) => input.trim().length > 0 ? null : 'Texto vazio.',
     onSuccess: async (ctx, message) => {
-      ctx.session.data = { ...ctx.session.data, promoMessage: message };
-      await ctx.editMessage('Agora digite a data e hora no formato:\n\nDD/MM/AAAA HH:mm:ss\n\nExemplo: 25/12/2024 15:30:00', {
-        reply_markup: { inline_keyboard: [[{ text: '❌ Cancelar', callback_data: 'promo_cancel' }]] },
-      });
-      // Inicia captura da data
-      await startCapture(ctx, 'promo_datetime', 'Digite a data e hora (DD/MM/AAAA HH:mm:ss):', {
+      await startCapture(ctx, 'promo_datetime', 'Digite data e hora (DD/MM/AAAA HH:mm:ss):', {
         validate: async (input) => {
           const regex = /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2}$/;
-          return regex.test(input) ? null : 'Formato inválido. Use DD/MM/AAAA HH:mm:ss';
+          return regex.test(input) ? null : 'Formato inválido.';
         },
         onSuccess: async (ctx, datetime) => {
           const [datePart, timePart] = datetime.split(' ');
@@ -42,36 +35,27 @@ export async function createScheduledPromotion(ctx: Context) {
           const [hours, minutes, seconds] = timePart.split(':').map(Number);
           const scheduledAt = new Date(year, month - 1, day, hours, minutes, seconds);
 
-          // Seleciona segmento
           await ctx.editMessage('Escolha o segmento:', {
             reply_markup: {
               inline_keyboard: [
-                [{ text: '👥 Todos', callback_data: `promo_segment_all` }],
-                [{ text: '🟢 Ativos', callback_data: `promo_segment_active` }],
-                [{ text: '🛒 Compradores', callback_data: `promo_segment_buyers` }],
-                [{ text: '🤝 Afiliados', callback_data: `promo_segment_affiliates` }],
+                [{ text: 'Todos', callback_data: `promo_segment_all` }],
+                [{ text: 'Ativos', callback_data: `promo_segment_active` }],
+                [{ text: 'Compradores', callback_data: `promo_segment_buyers` }],
+                [{ text: 'Afiliados', callback_data: `promo_segment_affiliates` }],
               ],
             },
           });
 
-          ctx.session.data = {
-            ...ctx.session.data,
-            promoScheduledAt: scheduledAt,
-            promoMessage: ctx.session.data.promoMessage,
-          };
+          ctx.session.data = { promoMessage: message, promoScheduledAt: scheduledAt };
         },
       });
     },
   });
 }
 
-// Função para finalizar criação após escolher segmento
 export async function finalizeScheduledPromotion(ctx: Context, segment: string) {
   const { promoMessage, promoScheduledAt } = ctx.session.data;
-  if (!promoMessage || !promoScheduledAt) {
-    await ctx.editMessage('Dados incompletos.');
-    return;
-  }
+  if (!promoMessage || !promoScheduledAt) return ctx.editMessage('Dados incompletos.');
 
   await prisma.scheduledPromotion.create({
     data: {
@@ -82,12 +66,10 @@ export async function finalizeScheduledPromotion(ctx: Context, segment: string) 
     },
   });
 
-  await logAction({ action: 'PROMOTION_SCHEDULED', details: { segment, scheduledAt: promoScheduledAt } });
-  await ctx.editMessage('✅ Promoção agendada com sucesso!');
+  await ctx.editMessage('✅ Promoção agendada!');
   ctx.session.data = {};
 }
 
-// Cria campanha de cupom
 export async function createCouponPromotion(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
 
@@ -98,9 +80,8 @@ export async function createCouponPromotion(ctx: Context) {
     },
     onSuccess: async (ctx, value) => {
       const couponValue = parseFloat(value.replace(',', '.'));
-      ctx.session.data = { ...ctx.session.data, couponValue };
 
-      await startCapture(ctx, 'coupon_validity', 'Digite a validade em horas (ex: 24):', {
+      await startCapture(ctx, 'coupon_validity', 'Digite a validade em horas:', {
         validate: async (input) => {
           const num = parseInt(input);
           return isNaN(num) || num <= 0 ? 'Inválido.' : null;
@@ -108,26 +89,20 @@ export async function createCouponPromotion(ctx: Context) {
         onSuccess: async (ctx, hours) => {
           const expiresAt = new Date(Date.now() + parseInt(hours) * 60 * 60 * 1000);
 
-          const promotion = await prisma.couponPromotion.create({
-            data: {
-              value: couponValue,
-              expiresAt,
-              isActive: true,
-            },
+          await prisma.couponPromotion.create({
+            data: { value: couponValue, expiresAt, isActive: true },
           });
 
-          await logAction({ action: 'COUPON_PROMOTION_CREATED', details: { value: couponValue, expiresAt } });
-          await ctx.editMessage(`✅ Campanha de cupom criada!\nValor: R$ ${couponValue.toFixed(2)}\nExpira em: ${hours} horas`);
-          ctx.session.data = {};
+          await ctx.editMessage(`✅ Campanha criada!\nValor: R$ ${couponValue.toFixed(2)}\nExpira em: ${hours} horas`);
         },
       });
     },
   });
 }
 
-// Lista promoções ativas
 export async function listPromotions(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
+
   const scheduled = await prisma.scheduledPromotion.findMany({ where: { sent: false }, orderBy: { scheduledAt: 'asc' } });
   const coupons = await prisma.couponPromotion.findMany({ where: { isActive: true } });
 
@@ -136,9 +111,7 @@ export async function listPromotions(ctx: Context) {
     `🎁 Campanhas de Cupom:\n` +
     coupons.map(c => `#${c.id} - R$ ${c.value} - Expira ${c.expiresAt.toLocaleString('pt-BR')}`).join('\n');
 
-  await ctx.editMessage(text || 'Nenhuma promoção ativa.', {
-    reply_markup: {
-      inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'promo_menu' }]],
-    },
+  await ctx.editMessage(text || 'Nenhuma promoção.', {
+    reply_markup: { inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'promo_menu' }]] },
   });
 }
