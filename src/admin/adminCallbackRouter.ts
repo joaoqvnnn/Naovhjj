@@ -24,6 +24,8 @@ import { showSecurityConfig, toggle2FA, toggleDeviceSecurity, toggleStrictDevice
 import { showUsersMenu, listUsers, searchUser, viewUserDetails, editUserBalance, toggleUserBlock, sendMessageToUser } from './userManagementFull';
 import { generateUserHistoryPdf } from '../flows/userHistoryPdf';
 import { startCapture } from '../middlewares/capture';
+import { showSobreConfig, editSobreContent } from './sobreConfig';
+import { showSupportConfig, editSupportLink, editBotVersion, editStoreName } from './supportConfig';
 
 export async function routeAdminCallback(ctx: Context, callbackData: string) {
   // Dashboard e menus principais
@@ -48,6 +50,15 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'config_logdest') return setLogDestination(ctx);
   if (callbackData === 'config_maintenance') return toggleMaintenance(ctx);
   if (callbackData === 'config_restart') return restartBot(ctx);
+
+  // Suporte e Sobre
+  if (callbackData === 'admin_config_support') return showSupportConfig(ctx);
+  if (callbackData === 'support_edit_link') return editSupportLink(ctx);
+  if (callbackData === 'support_edit_version') return editBotVersion(ctx);
+  if (callbackData === 'support_edit_store') return editStoreName(ctx);
+
+  if (callbackData === 'admin_config_sobre') return showSobreConfig(ctx);
+  if (callbackData === 'sobre_edit') return editSobreContent(ctx);
 
   // Admins
   if (callbackData === 'admin_config_admins') return listAdmins(ctx);
