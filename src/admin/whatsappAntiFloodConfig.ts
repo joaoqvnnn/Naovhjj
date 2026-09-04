@@ -7,13 +7,16 @@ export async function showWhatsAppAntiFloodConfig(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
 
   const setting = await prisma.setting.findUnique({ where: { key: 'whatsapp_antiflood' } });
-  const config = setting?.value as any || { max: 10, intervalSec: 30, blockSec: 300 };
+  const config = setting?.value as any || {
+    max: 10,
+    intervalSec: 30,
+    blockSec: 300,
+  };
 
-  const text = `🛡️ ANTI-FLOOD WHATSAPP\n\n` +
+  const text = `🛡️ Anti-Flood WhatsApp\n\n` +
     `Máx. mensagens: ${config.max}\n` +
     `Intervalo (seg): ${config.intervalSec}\n` +
-    `Bloqueio (seg): ${config.blockSec}\n\n` +
-    `Escolha o parâmetro:`;
+    `Bloqueio (seg): ${config.blockSec}`;
 
   await ctx.editMessage(text, {
     reply_markup: {
@@ -21,7 +24,7 @@ export async function showWhatsAppAntiFloodConfig(ctx: Context) {
         [{ text: '🔢 Máx. mensagens', callback_data: 'wa_af_set_max' }],
         [{ text: '⏱️ Intervalo', callback_data: 'wa_af_set_interval' }],
         [{ text: '⏳ Bloqueio', callback_data: 'wa_af_set_block' }],
-        [{ text: '⏮️ Voltar', callback_data: 'admin_actions_antiflood' }],
+        [{ text: '⏮️ Voltar', callback_data: 'admin_menu_actions' }],
       ],
     },
   });
@@ -37,7 +40,7 @@ export async function setWhatsAppAntiFloodParam(ctx: Context, param: string) {
   };
 
   const p = paramMap[param];
-  if (!p) return;
+  if (!p) return ctx.editMessage('Parâmetro inválido.');
 
   await startCapture(ctx, `wa_af_${param}`, p.label, {
     validate: async (input) => {
@@ -47,15 +50,18 @@ export async function setWhatsAppAntiFloodParam(ctx: Context, param: string) {
     onSuccess: async (ctx, value) => {
       const num = parseInt(value);
       const setting = await prisma.setting.findUnique({ where: { key: 'whatsapp_antiflood' } });
-      const config = setting?.value as any || { max: 10, intervalSec: 30, blockSec: 300 };
+      const config = setting?.value as any || {};
       config[p.key] = num;
       await prisma.setting.upsert({
         where: { key: 'whatsapp_antiflood' },
         update: { value: config },
         create: { key: 'whatsapp_antiflood', value: config },
       });
-      await ctx.editMessage('✅ Parâmetro atualizado.');
-      await showWhatsAppAntiFloodConfig(ctx);
+      await ctx.editMessage('✅ Parâmetro atualizado.', {
+        reply_markup: {
+          inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'wa_af_menu' }]],
+        },
+      });
     },
   });
 }
