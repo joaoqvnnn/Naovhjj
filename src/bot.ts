@@ -13,6 +13,8 @@ import { goToScreen } from './screens/manager';
 import { showRanking } from './flows/ranking';
 import { routeAdminCallback } from './admin/adminCallbackRouter';
 import { showProduct } from './screens/product';
+import { handleAttendanceButton, handleHumanButton, handleExitSupport } from './handlers/attendance';
+import { handleSupportMessage } from './flows/aiSupport';
 
 const bot = new Telegraf<Context>(config.botToken);
 
@@ -45,6 +47,11 @@ bot.command('afiliados', cmdAfiliados);
 // Inline query
 bot.on('inline_query', handleInlineQuery);
 
+// Callback do botão Atendimento -> inicia modo IA
+bot.action('menu_suporte', handleAttendanceButton);
+bot.action('support_human', handleHumanButton);
+bot.action('support_exit', handleExitSupport);
+
 // Callbacks de ranking
 bot.action('rank_servicos', async (ctx) => { await showRanking(ctx, 'servicos'); });
 bot.action('rank_recargas', async (ctx) => { await showRanking(ctx, 'recargas'); });
@@ -61,19 +68,22 @@ bot.action(/^comprar_(\d+)$/, async (ctx) => {
 bot.action('menu_recarregar', async (ctx) => { await goToScreen(ctx, 'recarregar'); });
 bot.action('voltar_inicio', async (ctx) => { await goToScreen(ctx, 'start'); });
 
-// Todos os callbacks administrativos serão roteados por adminCallbackRouter
+// Roteamento de callbacks administrativos
 bot.action(/.*/, async (ctx) => {
   const callbackData = ctx.callbackQuery.data;
   if (callbackData.startsWith('admin_') || callbackData.startsWith('config_') || callbackData.startsWith('aff_') || callbackData.startsWith('pixcfg_') || callbackData.startsWith('logins_') || callbackData.startsWith('research_') || callbackData.startsWith('template_') || callbackData.startsWith('btn') || callbackData.startsWith('bcast_') || callbackData.startsWith('antiflood_') || callbackData.startsWith('notif_') || callbackData.startsWith('saque_') || callbackData.startsWith('pixmanual_') || callbackData.startsWith('admin_updates_')) {
     await routeAdminCallback(ctx, callbackData);
   } else {
-    // fallback para outros callbacks não administrativos
     await ctx.answerCbQuery('Ação não reconhecida.');
   }
 });
 
-// Mensagens naturais (IA)
+// Mensagens de texto: se estiver em modo suporte, processa com IA; senão, assistente natural
 bot.on('text', async (ctx) => {
+  if (ctx.session.data?.supportMode && ctx.message && 'text' in ctx.message) {
+    await handleSupportMessage(ctx, ctx.message.text);
+    return;
+  }
   if (ctx.message && 'text' in ctx.message) {
     await handleNaturalLanguage(ctx, ctx.message.text);
   }
