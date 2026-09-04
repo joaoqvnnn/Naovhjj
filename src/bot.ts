@@ -27,7 +27,8 @@ import { showRateLimitConfig, editRateLimitConfig } from './admin/rateLimitConfi
 import { transcribeAudio } from './services/transcription';
 import { downloadMedia } from './utils/mediaDownload';
 import { showRentBot } from './flows/rentBot';
-import { showSecurityConfig, toggle2FA, toggleDeviceSecurity, toggleStrictDevice, setMaxPasswordAttempts, setBlockDuration } from './admin/securityConfig';
+import { showUsersMenu, listUsers, searchUser, editUserBalance, toggleUserBlock, sendMessageToUser } from './admin/userManagementFull';
+import { generateUserHistoryPdf } from './flows/userHistoryPdf';
 
 const bot = new Telegraf<Context>(config.botToken);
 
@@ -54,7 +55,7 @@ bot.start(async (ctx) => {
     await prisma.user.update({ where: { id: user.id }, data: { lastActivityAt: new Date() } });
   }
 
-  // Se for admin, mostra menu pessoal do admin; caso contrário, menu do cliente
+  // Verifica se é admin para mostrar menu administrativo pessoal
   if (user.role !== 'USER') {
     await goToScreen(ctx, 'admin_start');
   } else {
@@ -231,36 +232,56 @@ bot.action('menu_pesquisar', async (ctx) => {
 });
 
 // ==========================
-// CALLBACKS DE SEGURANÇA (ADMIN)
+// CALLBACKS DE GERENCIAMENTO DE USUÁRIOS
 // ==========================
-bot.action('security_menu', async (ctx) => {
+bot.action('admin_config_users', async (ctx) => {
   await ctx.answerCbQuery();
-  await showSecurityConfig(ctx);
+  await showUsersMenu(ctx);
 });
 
-bot.action('security_toggle_2fa', async (ctx) => {
+bot.action('users_menu', async (ctx) => {
   await ctx.answerCbQuery();
-  await toggle2FA(ctx);
+  await showUsersMenu(ctx);
 });
 
-bot.action('security_toggle_device', async (ctx) => {
+bot.action('users_list', async (ctx) => {
   await ctx.answerCbQuery();
-  await toggleDeviceSecurity(ctx);
+  await listUsers(ctx);
 });
 
-bot.action('security_toggle_strict', async (ctx) => {
-  await ctx.answerCbQuery();
-  await toggleStrictDevice(ctx);
+bot.action(/^users_page_(\d+)$/, async (ctx) => {
+  const page = parseInt(ctx.match[1]);
+  await listUsers(ctx, page);
 });
 
-bot.action('security_set_attempts', async (ctx) => {
-  await ctx.answerCbQuery();
-  await setMaxPasswordAttempts(ctx);
+bot.action('users_search', async (ctx) => {
+  const { startCapture } = await import('./middlewares/capture');
+  await startCapture(ctx, 'users_search_term', 'Digite o ID, Telegram ID ou username:', {
+    validate: async (input) => input.trim().length > 0 ? null : 'Digite algo.',
+    onSuccess: async (ctx, term) => {
+      await searchUser(ctx, term);
+    },
+  });
 });
 
-bot.action('security_set_block', async (ctx) => {
-  await ctx.answerCbQuery();
-  await setBlockDuration(ctx);
+bot.action(/^user_edit_balance_(\d+)$/, async (ctx) => {
+  const userId = parseInt(ctx.match[1]);
+  await editUserBalance(ctx, userId);
+});
+
+bot.action(/^user_toggle_block_(\d+)$/, async (ctx) => {
+  const userId = parseInt(ctx.match[1]);
+  await toggleUserBlock(ctx, userId);
+});
+
+bot.action(/^user_message_(\d+)$/, async (ctx) => {
+  const userId = parseInt(ctx.match[1]);
+  await sendMessageToUser(ctx, userId);
+});
+
+bot.action(/^user_pdf_(\d+)$/, async (ctx) => {
+  const userId = parseInt(ctx.match[1]);
+  await generateUserHistoryPdf(ctx, userId);
 });
 
 // ==========================
@@ -293,7 +314,11 @@ bot.action(/.*/, async (ctx) => {
     callbackData.startsWith('promo_') ||
     callbackData.startsWith('ratelimit_') ||
     callbackData.startsWith('giftcard_admin_') ||
-    callbackData.startsWith('security_') // Segurança
+    callbackData.startsWith('security_') ||
+    callbackData.startsWith('user_') || // gerência de usuários
+    callbackData === 'users_list' ||
+    callbackData === 'users_search' ||
+    callbackData === 'users_menu'
   ) {
     await routeAdminCallback(ctx, callbackData);
   } else {
