@@ -1,7 +1,6 @@
 import { Context } from '../types/context';
 import prisma from '../database';
 
-// Tipo para definição de tela
 interface ScreenDefinition {
   id: string;
   render: (ctx: Context, data?: any) => Promise<{
@@ -11,7 +10,6 @@ interface ScreenDefinition {
   }>;
 }
 
-// Registro de telas
 const screens = new Map<string, ScreenDefinition>();
 
 export function registerScreen(screen: ScreenDefinition) {
@@ -22,7 +20,6 @@ export function getScreen(id: string): ScreenDefinition | undefined {
   return screens.get(id);
 }
 
-// Função para navegar para uma tela
 export async function goToScreen(ctx: Context, screenId: string, data?: any) {
   const screen = getScreen(screenId);
   if (!screen) {
@@ -65,7 +62,6 @@ export async function goToScreen(ctx: Context, screenId: string, data?: any) {
   ctx.session.data = data || {};
 }
 
-// Função para voltar
 export async function goBack(ctx: Context) {
   const previous = ctx.session.previousScreen;
   if (previous) {
@@ -75,7 +71,6 @@ export async function goBack(ctx: Context) {
   }
 }
 
-// Middleware para injetar helpers no contexto
 export function attachScreenManager(ctx: Context, next: () => Promise<void>) {
   ctx.session = ctx.session || { data: {} };
   ctx.goToScreen = (screenId, data) => goToScreen(ctx, screenId, data);
@@ -83,9 +78,7 @@ export function attachScreenManager(ctx: Context, next: () => Promise<void>) {
   return next();
 }
 
-// ==========================
-// REGISTRO DA TELA ADMIN_START
-// ==========================
+// Registro da tela admin_start
 registerScreen({
   id: 'admin_start',
   render: async (ctx: Context) => {
@@ -103,6 +96,7 @@ registerScreen({
           [{ text: '⚙️ Configurações', callback_data: 'admin_menu_config' }],
           [{ text: '📦 Produtos', callback_data: 'admin_config_products' }],
           [{ text: '👥 Usuários', callback_data: 'admin_config_users' }],
+          [{ text: '⏮️ Voltar', callback_data: 'voltar_inicio' }],
         ],
       },
     };
