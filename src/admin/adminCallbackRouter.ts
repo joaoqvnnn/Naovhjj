@@ -11,12 +11,12 @@ import { showButtonList, viewButtonConfig, addButton, editButton, removeButton, 
 import { showBroadcastMenuWithButtons, startBroadcastText, addBuyButton, addBalanceButton, addRegisterButton, addSupportButton, addLinkButton, sendBroadcastWithButtons } from './broadcastWithButtons';
 import { showAntifloodConfig, setAntifloodParam } from './antifloodConfig';
 import { showNotificationConfig, toggleNotification } from './notifications';
-import { showWithdrawalMenu, viewWithdrawal, approveWithdrawal, rejectWithdrawal, reprocessWithdrawal } from './withdrawalReview';
+import { showWithdrawalMenu, listWithdrawalsByStatus, viewWithdrawal, approveWithdrawal, rejectWithdrawal } from './withdrawalReview';
 import { showManualPixPending, viewManualPix, confirmManualPixAction, rejectManualPixAction } from './pixManual';
 import { showDetailedStats } from './dashboardStats';
 import { showPromotionSettings, setAutoDelete, setViewerExpiration } from './promotionSettings';
 import { showInactivityConfig, setInactivityDays } from './inactivityConfig';
-import { showTranscriptionConfig, setTranscriptionKey } from './transcriptionConfig';
+import { showTranscriptionConfig, toggleTranscription, setTranscriptionKey } from './transcriptionConfig';
 import { showGiftCardAdminMenu, createGiftCard, createGiftCardBatch, listGiftCards, viewGiftCard, disableGiftCard, deleteGiftCard } from './giftCardAdmin';
 import { checkUpdates, viewSystemLogs, cleanOldData, backupConfig, resetMessages } from './updatesActions';
 import { showSecurityConfig, toggle2FA, toggleDeviceSecurity, toggleStrictDevice, setMaxPasswordAttempts, setBlockDuration } from './securityConfig';
@@ -169,10 +169,12 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
 
   // Transações
   if (callbackData === 'admin_transactions_withdrawals') return showWithdrawalMenu(ctx);
+  if (callbackData === 'withdrawals_pending') return listWithdrawalsByStatus(ctx, 'PENDING');
+  if (callbackData === 'withdrawals_paid') return listWithdrawalsByStatus(ctx, 'PAID');
+  if (callbackData === 'withdrawals_rejected') return listWithdrawalsByStatus(ctx, 'REJECTED');
   if (callbackData.startsWith('saque_view_')) return viewWithdrawal(ctx, parseInt(callbackData.split('_')[2]));
   if (callbackData.startsWith('saque_aprovar_')) return approveWithdrawal(ctx, parseInt(callbackData.split('_')[2]));
   if (callbackData.startsWith('saque_rejeitar_')) return rejectWithdrawal(ctx, parseInt(callbackData.split('_')[2]));
-  if (callbackData.startsWith('saque_reprocessar_')) return reprocessWithdrawal(ctx, parseInt(callbackData.split('_')[2]));
 
   if (callbackData === 'admin_transactions_pix_manual') return showManualPixPending(ctx);
   if (callbackData.startsWith('pixmanual_view_')) return viewManualPix(ctx, parseInt(callbackData.split('_')[2]));
@@ -183,7 +185,7 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'admin_transactions_stats') return showDetailedStats(ctx);
   if (callbackData === 'stats_refresh') return showDetailedStats(ctx);
 
-  // Promoções e configurações
+  // Promoções
   if (callbackData === 'promo_settings') return showPromotionSettings(ctx);
   if (callbackData === 'promo_set_autodelete') return setAutoDelete(ctx);
   if (callbackData === 'promo_set_viewers') return setViewerExpiration(ctx);
@@ -194,6 +196,7 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
 
   // Transcrição
   if (callbackData === 'admin_transcription') return showTranscriptionConfig(ctx);
+  if (callbackData === 'transcription_toggle') return toggleTranscription(ctx);
   if (callbackData === 'transcription_set_key') return setTranscriptionKey(ctx);
 
   // Gift Cards
@@ -211,6 +214,14 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'admin_updates_clean') return cleanOldData(ctx);
   if (callbackData === 'admin_updates_backup') return backupConfig(ctx);
   if (callbackData === 'admin_updates_reset') return resetMessages(ctx);
+
+  // Segurança
+  if (callbackData === 'security_menu') return showSecurityConfig(ctx);
+  if (callbackData === 'security_toggle_2fa') return toggle2FA(ctx);
+  if (callbackData === 'security_toggle_device') return toggleDeviceSecurity(ctx);
+  if (callbackData === 'security_toggle_strict') return toggleStrictDevice(ctx);
+  if (callbackData === 'security_set_attempts') return setMaxPasswordAttempts(ctx);
+  if (callbackData === 'security_set_block') return setBlockDuration(ctx);
 
   // Fallback
   return ctx.answerCbQuery('Ação não reconhecida.');
