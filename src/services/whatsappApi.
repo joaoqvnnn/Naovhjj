@@ -1,0 +1,151 @@
+import axios from 'axios';
+import prisma from '../database';
+import { logAction } from './logger';
+import { isBlockedByFlood } from '../middlewares/whatsappAntiFlood';
+import { downloadMedia } from '../utils/mediaDownload';
+import { transcribeAudio } from './transcription';
+
+interface WhatsAppApiConfig {
+  url: string;
+  apikey: string;
+  instance: string;
+}
+
+async function getConfig(): Promise<WhatsAppApiConfig | null> {
+  const setting = await prisma.setting.findUnique({ where: { key: 'whatsapp_api' } });
+  if (!setting) return null;
+  return setting.value as WhatsAppApiConfig;
+}
+
+export async function sendWhatsAppText(to: string, text: string): Promise<boolean> {
+  const config = await getConfig();
+  if (!config) {
+    console.log(`[WhatsApp Simulado] Para: ${to}\n${text}`);
+    return true;
+  }
+  try {
+    await axios.post(`${config.url}/message/sendText/${config.instance}`, {
+      number: to,
+      text,
+    }, {
+      headers: { apikey: config.apikey },
+    });
+    return true;
+  } catch (error) {
+    console.error('Erro ao enviar texto WhatsApp:', error);
+    await logAction({ action: 'WHATSAPP_SEND_ERROR', details: { to, error: String(error) } });
+    return false;
+  }
+}
+
+export async function sendWhatsAppButton(to: string, text: string, buttons: Array<{ type: 'reply', displayText: string, id: string }>): Promise<boolean> {
+  const config = await getConfig();
+  if (!config) {
+    console.log(`[WhatsApp Simulado] Para: ${to}\n${text}\nBotões: ${JSON.stringify(buttons)}`);
+    return true;
+  }
+  try {
+    await axios.post(`${config.url}/message/sendButtons/${config.instance}`, {
+      number: to,
+      text,
+      buttons,
+    }, {
+      headers: { apikey: config.apikey },
+    });
+    return true;
+  } catch (error) {
+    console.error('Erro ao enviar botão WhatsApp:', error);
+    await logAction({ action: 'WHATSAPP_SEND_ERROR', details: { to, error: String(error) } });
+    return false;
+  }
+}
+
+// Processa mensagens recebidas (chamado pelo webhook)
+export async function handleIncomingWhatsAppMessage(data: any) {
+  const remoteJid = data?.data?.key?.remoteJid;
+  const fromMe = data?.data?.key?.fromMe;
+  const message = data?.data?.message;
+
+  if (fromMe || !remoteJid) return;
+
+  // Verifica anti-flood antes de processar
+  const blocked = await isBlockedByFlood(remoteJid);
+  if (blocked) {
+    console.log(`[AntiFlood] Mensagem de ${remoteJid} ignorada por bloqueio.`);
+    return;
+  }
+
+  // Se for mensagem de áudio ou voz
+  const audio = message?.audioMessage || message?.voiceMessage;
+  if (audio) {
+    await handleAudioMessage(remoteJid, audio);
+    return;
+  }
+
+  // Se for texto comum
+  const messageText = message?.conversation || message?.extendedTextMessage?.text || '';
+  if (messageText) {
+    // Importa dinamicamente o fluxo de ativação e comandos
+    const { handleWhatsAppActivationFlow } = await import('../flows/whatsappActivation');
+    await handleWhatsAppActivationFlow(remoteJid, messageText);
+
+    const { handleWhatsAppCommands } = await import('../flows/whatsappCommands');
+    await handleWhatsAppCommands(remoteJid, messageText);
+  }
+}
+
+// Processa mensagem de áudio
+async function handleAudioMessage(remoteJid: string, audio: any) {
+  try {
+    // Verifica se transcrição está habilitada
+    const transcriptionSetting = await prisma.setting.findUnique({ where: { key: 'transcription_enabled' } });
+    if (!transcriptionSetting || !transcriptionSetting.value) {
+      await sendWhatsAppText(remoteJid, 'Transcrição de áudio desativada.');
+      return;
+    }
+
+    // Obtém URL da mídia (depende da Evolution API: pode ser "url" ou "directUrl")
+    let mediaUrl = audio?.url || audio?.directUrl;
+    if (!mediaUrl) {
+      // Tenta baixar usando o ID da mensagem e a API
+      const config = await getConfig();
+      if (!config) return;
+      const mediaId = audio?.id;
+      if (!mediaId) return;
+      // Exemplo: GET /chat/getMedia/:instance?messageId=...&number=...
+      mediaUrl = `${config.url}/chat/getMedia/${config.instance}?messageId=${mediaId}&number=${remoteJid}`;
+    }
+
+    if (!mediaUrl) {
+      await sendWhatsAppText(remoteJid, 'Não foi possível obter o áudio.');
+      return;
+    }
+
+    // Baixa o áudio
+    const audioBuffer = await downloadMedia(mediaUrl);
+    if (!audioBuffer) {
+      await sendWhatsAppText(remoteJid, 'Falha ao baixar o áudio.');
+      return;
+    }
+
+    // Transcreve
+    const transcribedText = await transcribeAudio(audioBuffer, 'audio/ogg');
+    if (!transcribedText) {
+      await sendWhatsAppText(remoteJid, 'Não foi possível transcrever o áudio.');
+      return;
+    }
+
+    // Processa o texto transcrito como mensagem normal
+    const { handleWhatsAppActivationFlow } = await import('../flows/whatsappActivation');
+    await handleWhatsAppActivationFlow(remoteJid, transcribedText);
+
+    const { handleWhatsAppCommands } = await import('../flows/whatsappCommands');
+    await handleWhatsAppCommands(remoteJid, transcribedText);
+
+    // Responde ao usuário com o texto transcrito (opcional, para confirmação)
+    await sendWhatsAppText(remoteJid, `Transcrição: "${transcribedText}"`);
+  } catch (error) {
+    console.error('Erro no processamento de áudio WhatsApp:', error);
+    await sendWhatsAppText(remoteJid, 'Erro ao processar áudio.');
+  }
+}
