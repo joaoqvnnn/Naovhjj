@@ -1,23 +1,37 @@
 import bot from './bot';
+import supportBot from './supportBot';
 import prisma from './database';
 import config from './config';
 import express from 'express';
 import cors from 'cors';
 import http from 'http';
-import webRouter from './web'; // novo import
+import webRouter from './web';
 
-async function startBot() {
+async function startBots() {
   try {
     await prisma.$connect();
     console.log('✅ Banco de dados conectado.');
 
+    // Inicia bot principal (loja)
     await bot.launch();
-    console.log('🤖 Bot iniciado com sucesso!');
+    console.log('🤖 Bot da loja iniciado!');
 
-    process.once('SIGINT', () => bot.stop('SIGINT'));
-    process.once('SIGTERM', () => bot.stop('SIGTERM'));
+    // Inicia bot de suporte (se token diferente)
+    if (process.env.SUPPORT_BOT_TOKEN && process.env.SUPPORT_BOT_TOKEN !== process.env.BOT_TOKEN) {
+      await supportBot.launch();
+      console.log('🎧 Bot de suporte iniciado!');
+    }
+
+    process.once('SIGINT', () => {
+      bot.stop('SIGINT');
+      supportBot.stop('SIGINT');
+    });
+    process.once('SIGTERM', () => {
+      bot.stop('SIGTERM');
+      supportBot.stop('SIGTERM');
+    });
   } catch (error) {
-    console.error('❌ Falha ao iniciar o bot:', error);
+    console.error('❌ Falha ao iniciar bots:', error);
     process.exit(1);
   }
 }
@@ -30,12 +44,10 @@ async function startWebServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // Rota de saúde
   app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // Rotas web (ativação, recuperação de senha, saque, etc.)
   app.use('/web', webRouter);
 
   const port = process.env.PORT || 3000;
@@ -54,5 +66,5 @@ async function startWebServer() {
   process.on('SIGTERM', shutdown);
 }
 
-startBot();
+startBots();
 startWebServer();
