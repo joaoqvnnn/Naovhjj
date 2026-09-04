@@ -90,7 +90,7 @@ model User {
   email             String?
   phone             String?
   whatsapp          String?
-  passwordHash      String?   // senha única para ativação/saque
+  passwordHash      String?
   balance           Decimal   @default(0) @db.Decimal(10, 2)
   bonusBalance      Decimal   @default(0) @db.Decimal(10, 2)
   status            UserStatus @default(ACTIVE)
@@ -101,8 +101,10 @@ model User {
   referredUsers     User[]    @relation("Referral")
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+  lastActivityAt    DateTime?
 
   affiliateBalance  Decimal   @default(0) @db.Decimal(10, 2)
+  affiliatePoints   Int       @default(0)
   totalSpent        Decimal   @default(0) @db.Decimal(10, 2)
   totalRecharged    Decimal   @default(0) @db.Decimal(10, 2)
 
@@ -115,6 +117,11 @@ model User {
   commissions       Commission[]
   sessions          Session[]
   passwordResetCodes PasswordResetCode[]
+  userCoupons       UserCoupon[]
+  devices           Device[]
+  twoFactorCodes    TwoFactorCode[]
+  reservedStockUnits StockUnit[]
+  recharges          Recharge[]
 }
 
 // ==============================
@@ -166,7 +173,7 @@ model StockUnit {
   id           Int       @id @default(autoincrement())
   productId    Int
   product      Product   @relation(fields: [productId], references: [id])
-  content      String    // conteúdo: login, senha, email, etc. (pode ser JSON)
+  content      String
   isReserved   Boolean   @default(false)
   reservedUntil DateTime?
   reservedByUserId Int?
@@ -199,12 +206,13 @@ model Order {
   deliveredAt   DateTime?
   expiresAt     DateTime?
   accessCount   Int           @default(0)
-  maxAccess     Int?          // limite personalizado; se nulo, usa configuração global
+  maxAccess     Int?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
   stockUnits    StockUnit[]
   payment       Payment?
+  commissions   Commission[]
 }
 
 // ==============================
@@ -220,13 +228,15 @@ model Payment {
   method        PaymentMethod
   status        PaymentStatus @default(PENDING)
   amount        Decimal       @db.Decimal(10, 2)
-  externalId    String?       // ID no gateway (Mercado Pago)
-  qrCode        String?       // Pix copia e cola
-  qrCodeImage   String?       // URL da imagem do QR Code
+  externalId    String?
+  qrCode        String?
+  qrCodeImage   String?
   expiresAt     DateTime?
   paidAt        DateTime?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+
+  recharges     Recharge[]
 }
 
 // ==============================
@@ -252,12 +262,12 @@ model Recharge {
 
 model Commission {
   id          Int      @id @default(autoincrement())
-  userId      Int      // afiliado que recebe
+  userId      Int
   user        User     @relation(fields: [userId], references: [id])
   orderId     Int?
   order       Order?   @relation(fields: [orderId], references: [id])
   amount      Decimal  @db.Decimal(10, 2)
-  status      String   @default("PENDING") // PENDING, AVAILABLE, WITHDRAWN
+  status      String   @default("PENDING")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -275,7 +285,7 @@ model Withdrawal {
   netAmount   Decimal          @db.Decimal(10, 2)
   method      WithdrawalMethod
   pixKey      String?
-  bankDetails Json?            // { bank, agency, account, type, cpfCnpj, holder }
+  bankDetails Json?
   status      WithdrawalStatus @default(PENDING)
   externalId  String?
   processedAt DateTime?
@@ -385,11 +395,87 @@ model PasswordResetCode {
   id        Int      @id @default(autoincrement())
   userId    Int
   user      User     @relation(fields: [userId], references: [id])
-  code      String   // hash do código
+  code      String
   expiresAt DateTime
   attempts  Int      @default(0)
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
 
   @@index([userId, code])
+}
+
+// ==============================
+// CÓDIGOS 2FA
+// ==============================
+
+model TwoFactorCode {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  code      String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// ==============================
+// DISPOSITIVOS (para segurança)
+// ==============================
+
+model Device {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  ip        String
+  userAgent String
+  lastUsedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+}
+
+// ==============================
+// PROMOÇÕES AGENDADAS
+// ==============================
+
+model ScheduledPromotion {
+  id          Int      @id @default(autoincrement())
+  message     String
+  scheduledAt DateTime
+  segment     String
+  sent        Boolean  @default(false)
+  sentAt      DateTime?
+  couponId    Int?
+  coupon      CouponPromotion? @relation(fields: [couponId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+// ==============================
+// CAMPANHAS DE CUPOM
+// ==============================
+
+model CouponPromotion {
+  id          Int       @id @default(autoincrement())
+  value       Decimal   @db.Decimal(10, 2)
+  expiresAt   DateTime
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  userCoupons UserCoupon[]
+  scheduledPromotions ScheduledPromotion[]
+}
+
+// ==============================
+// CUPONS DE USUÁRIO
+// ==============================
+
+model UserCoupon {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  user              User     @relation(fields: [userId], references: [id])
+  couponPromotionId Int
+  couponPromotion   CouponPromotion @relation(fields: [couponPromotionId], references: [id])
+  code              String   @unique
+  used              Boolean  @default(false)
+  usedAt            DateTime?
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
 }
