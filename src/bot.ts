@@ -10,15 +10,23 @@ import { handleNaturalLanguage } from './flows/aiAssistant';
 import { handleDynamicButton } from './flows/buttonHandlers';
 import { handleInlineQuery } from './flows/inlineSearch';
 import { goToScreen } from './screens/manager';
+import { showRanking } from './flows/ranking';
+import { handleAttendanceButton, handleHumanButton, handleExitSupport } from './handlers/attendance';
+import { handleSupportMessage } from './flows/aiSupport';
 
 const bot = new Telegraf<Context>(config.botToken);
 
+// ========================
+// MIDDLEWARES GLOBAIS
+// ========================
 bot.use(sessionMiddleware);
 bot.use(blockedUserMiddleware);
 bot.use(maintenanceMiddleware);
 bot.use(captureMiddleware);
 
-// Comandos
+// ========================
+// COMANDOS
+// ========================
 bot.start(async (ctx) => {
   const userId = ctx.from.id;
   let user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
@@ -39,30 +47,61 @@ bot.command('saldo', cmdSaldo);
 bot.command('id', cmdId);
 bot.command('afiliados', cmdAfiliados);
 
-// Inline query para pesquisa
+// ========================
+// INLINE QUERY (pesquisa de serviços)
+// ========================
 bot.on('inline_query', handleInlineQuery);
 
-// Callbacks de botões dinâmicos (ex: comprar, saldo, cadastrar)
+// ========================
+// CALLBACKS DE NAVEGAÇÃO E AÇÕES
+// ========================
+
+// Menu principal: botão "Atendimento" -> agora leva para o chat privado do suporte (link)
+bot.action('menu_suporte', handleAttendanceButton);
+
+// Botões do atendimento (caso ainda sejam usados)
+bot.action('support_human', handleHumanButton);
+bot.action('support_exit', handleExitSupport);
+
+// Callbacks de ranking (alternância visual)
+bot.action('rank_servicos', async (ctx) => { await showRanking(ctx, 'servicos'); });
+bot.action('rank_recargas', async (ctx) => { await showRanking(ctx, 'recargas'); });
+bot.action('rank_saldo', async (ctx) => { await showRanking(ctx, 'saldo'); });
+bot.action('rank_compras', async (ctx) => { await showRanking(ctx, 'compras'); });
+
+// Callback dinâmico para botões de compra (ex: comprar_1)
 bot.action(/^comprar_(\d+)$/, async (ctx) => {
   const productId = parseInt(ctx.match[1]);
   await handleDynamicButton(ctx, 'comprar', String(productId));
 });
 
+// Outros botões dinâmicos (adicionar saldo, cadastrar, etc.)
 bot.action('menu_recarregar', async (ctx) => {
   await handleDynamicButton(ctx, 'adicionar_saldo');
 });
-
 bot.action('start', async (ctx) => {
   await handleDynamicButton(ctx, 'cadastrar');
 });
 
-// Mensagens naturais (IA)
+// ========================
+// MENSAGENS DE TEXTO (IA natural + modo suporte)
+// ========================
 bot.on('text', async (ctx) => {
+  // Se o modo de atendimento IA estiver ativo na sessão, processa com IA
+  if (ctx.session.data?.supportMode && ctx.message && 'text' in ctx.message) {
+    await handleSupportMessage(ctx, ctx.message.text);
+    return;
+  }
+
+  // Caso contrário, usa o assistente natural (intenções simples)
   if (ctx.message && 'text' in ctx.message) {
     await handleNaturalLanguage(ctx, ctx.message.text);
   }
 });
 
+// ========================
+// TRATAMENTO DE ERROS
+// ========================
 bot.catch((err, ctx) => {
   console.error(`Erro para ${ctx.from?.id}:`, err);
   ctx.reply('Ocorreu um erro. Tente novamente.');
