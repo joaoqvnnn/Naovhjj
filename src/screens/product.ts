@@ -21,6 +21,7 @@ export async function showProduct(ctx: Context, productId: number) {
   const userId = ctx.from!.id;
   const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
 
+  // Busca template personalizado (se existir)
   const template = await prisma.messageTemplate.findUnique({ where: { key: 'produto' } });
   let text: string;
 
@@ -34,6 +35,8 @@ export async function showProduct(ctx: Context, productId: number) {
       descricao: product.description || '',
       garantia: product.guarantee || '',
       duracao: product.duration || '',
+      vendidos: 0,
+      visualizacoes: 0,
     });
   } else {
     text = `🔥 OPORTUNIDADE EXCLUSIVA 🔥\n` +
@@ -43,7 +46,8 @@ export async function showProduct(ctx: Context, productId: number) {
       `├ 💰 Seu Saldo: ${formatCurrency(user?.balance || 0)}\n` +
       `└ 📦 Estoque: ${available}\n\n` +
       `${product.description ? `📝 Descrição:\n${product.description}\n\n` : ''}` +
-      `${product.guarantee ? `🛡 Garantia: ${product.guarantee}\n` : ''}`;
+      `${product.guarantee ? `🛡 Garantia: ${product.guarantee}\n` : ''}` +
+      `✅ Compra segura. Ao adquirir, concorda com /termos`;
   }
 
   const keyboard = {
@@ -54,5 +58,17 @@ export async function showProduct(ctx: Context, productId: number) {
     ],
   };
 
-  await ctx.editMessage(text, { reply_markup: keyboard });
+  // Verifica se há imagem configurada (template ou produto)
+  const imageUrl = template?.imageUrl || product.imageUrl;
+
+  if (imageUrl) {
+    // Envia foto com legenda (junto com a mensagem)
+    await ctx.replyWithPhoto(imageUrl, {
+      caption: text,
+      parse_mode: 'HTML',
+      reply_markup: keyboard,
+    });
+  } else {
+    await ctx.editMessage(text, { reply_markup: keyboard });
+  }
 }
