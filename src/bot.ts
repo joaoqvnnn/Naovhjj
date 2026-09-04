@@ -27,6 +27,7 @@ import { showRateLimitConfig, editRateLimitConfig } from './admin/rateLimitConfi
 import { transcribeAudio } from './services/transcription';
 import { downloadMedia } from './utils/mediaDownload';
 import { showRentBot } from './flows/rentBot';
+import { showSecurityConfig, toggle2FA, toggleDeviceSecurity, toggleStrictDevice, setMaxPasswordAttempts, setBlockDuration } from './admin/securityConfig';
 
 const bot = new Telegraf<Context>(config.botToken);
 
@@ -230,6 +231,39 @@ bot.action('menu_pesquisar', async (ctx) => {
 });
 
 // ==========================
+// CALLBACKS DE SEGURANÇA (ADMIN)
+// ==========================
+bot.action('security_menu', async (ctx) => {
+  await ctx.answerCbQuery();
+  await showSecurityConfig(ctx);
+});
+
+bot.action('security_toggle_2fa', async (ctx) => {
+  await ctx.answerCbQuery();
+  await toggle2FA(ctx);
+});
+
+bot.action('security_toggle_device', async (ctx) => {
+  await ctx.answerCbQuery();
+  await toggleDeviceSecurity(ctx);
+});
+
+bot.action('security_toggle_strict', async (ctx) => {
+  await ctx.answerCbQuery();
+  await toggleStrictDevice(ctx);
+});
+
+bot.action('security_set_attempts', async (ctx) => {
+  await ctx.answerCbQuery();
+  await setMaxPasswordAttempts(ctx);
+});
+
+bot.action('security_set_block', async (ctx) => {
+  await ctx.answerCbQuery();
+  await setBlockDuration(ctx);
+});
+
+// ==========================
 // CALLBACKS DINÂMICOS GERAIS
 // ==========================
 bot.action('menu_recarregar', async (ctx) => { await goToScreen(ctx, 'recarregar'); });
@@ -258,7 +292,8 @@ bot.action(/.*/, async (ctx) => {
     callbackData.startsWith('wa_af_') ||
     callbackData.startsWith('promo_') ||
     callbackData.startsWith('ratelimit_') ||
-    callbackData.startsWith('giftcard_admin_') // Gift Cards admin
+    callbackData.startsWith('giftcard_admin_') ||
+    callbackData.startsWith('security_') // Segurança
   ) {
     await routeAdminCallback(ctx, callbackData);
   } else {
