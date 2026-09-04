@@ -3,6 +3,7 @@ import prisma from '../database';
 import { formatCurrency } from '../utils/format';
 import { replaceVars } from '../flows/dynamicVars';
 import { getAvailableStock } from '../services/stock';
+import { getCurrentViewers, trackProductView } from '../services/viewers';
 
 export async function showProduct(ctx: Context, productId: number) {
   const product = await prisma.product.findUnique({
@@ -21,7 +22,13 @@ export async function showProduct(ctx: Context, productId: number) {
   const userId = ctx.from!.id;
   const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
 
-  // Busca template personalizado (se existir)
+  // Registra visualização do produto
+  trackProductView(productId, user?.id || userId);
+
+  // Obtém número de pessoas visualizando agora
+  const currentViewers = await getCurrentViewers(productId);
+
+  // Busca template personalizado
   const template = await prisma.messageTemplate.findUnique({ where: { key: 'produto' } });
   let text: string;
 
@@ -36,7 +43,7 @@ export async function showProduct(ctx: Context, productId: number) {
       garantia: product.guarantee || '',
       duracao: product.duration || '',
       vendidos: 0,
-      visualizacoes: 0,
+      visualizacoes: currentViewers,
     });
   } else {
     text = `🔥 OPORTUNIDADE EXCLUSIVA 🔥\n` +
@@ -46,6 +53,9 @@ export async function showProduct(ctx: Context, productId: number) {
       `├ 💰 Seu Saldo: ${formatCurrency(user?.balance || 0)}\n` +
       `└ 📦 Estoque: ${available}\n\n` +
       `${product.description ? `📝 Descrição:\n${product.description}\n\n` : ''}` +
+      `📊 Estatísticas em tempo real:\n` +
+      `⚡️ Já foram vendidas 0 unidades!\n` +
+      `👀 ${currentViewers} pessoas estão vendo isso agora.\n\n` +
       `${product.guarantee ? `🛡 Garantia: ${product.guarantee}\n` : ''}` +
       `✅ Compra segura. Ao adquirir, concorda com /termos`;
   }
@@ -58,11 +68,9 @@ export async function showProduct(ctx: Context, productId: number) {
     ],
   };
 
-  // Verifica se há imagem configurada (template ou produto)
   const imageUrl = template?.imageUrl || product.imageUrl;
 
   if (imageUrl) {
-    // Envia foto com legenda (junto com a mensagem)
     await ctx.replyWithPhoto(imageUrl, {
       caption: text,
       parse_mode: 'HTML',
