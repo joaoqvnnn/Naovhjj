@@ -39,13 +39,9 @@ export async function handleSupportMessage(ctx: Context, text: string) {
 
   if (!user || !ctx.session.data?.supportMode) return;
 
-  // Mostra indicador de digitação (opcional)
   await ctx.replyWithChatAction('typing');
-
-  // Chama a IA
   const response = await generateAIResponse(user.id, text);
 
-  // Envia resposta
   await ctx.reply(response, {
     reply_markup: {
       inline_keyboard: [
@@ -55,7 +51,6 @@ export async function handleSupportMessage(ctx: Context, text: string) {
     },
   });
 
-  // Registra log
   await logAction({
     action: 'AI_SUPPORT_MESSAGE',
     userId: user.id,
@@ -63,19 +58,26 @@ export async function handleSupportMessage(ctx: Context, text: string) {
   });
 }
 
-// Transfere para humano (apenas notifica o admin ou envia link)
+// Transfere para humano (notifica o dono e fornece link)
 export async function transferToHuman(ctx: Context) {
   const userId = ctx.from!.id;
   const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
 
   if (!user) return;
 
+  // Sai do modo IA
+  ctx.session.data = { ...ctx.session.data, supportMode: false };
+
   // Busca link de suporte configurado
   const supportLink = await prisma.setting.findUnique({ where: { key: 'support_link' } });
   const link = supportLink?.value || 'https://t.me/larizinhastorebot';
 
-  // Sai do modo IA
-  ctx.session.data = { ...ctx.session.data, supportMode: false };
+  // Envia notificação para o dono (opcional)
+  const ownerId = process.env.OWNER_TELEGRAM_ID;
+  if (ownerId) {
+    const bot = (await import('../bot')).default;
+    await bot.telegram.sendMessage(ownerId, `👤 Cliente ${user.username || user.id} solicitou atendimento humano.`);
+  }
 
   await ctx.editMessage(
     `👤 Atendimento Humano\n\n` +
