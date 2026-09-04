@@ -2,10 +2,23 @@ import { Context } from '../types/context';
 import prisma from '../database';
 import { isAdmin } from './userManagement';
 import { startCapture } from '../middlewares/capture';
-import { formatCurrency, formatDate } from '../utils/format';
-import { logAction } from '../services/logger';
+import { formatCurrency } from '../utils/format';
 
-// Lista usuários com paginação simples
+export async function showUsersMenu(ctx: Context) {
+  if (!(await isAdmin(ctx))) return;
+  await ctx.editMessage('👥 GERENCIAR USUÁRIOS\n\nEscolha uma ação:', {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '📋 Listar usuários', callback_data: 'users_list' }],
+        [{ text: '🔍 Pesquisar usuário', callback_data: 'users_search' }],
+        [{ text: '🎁 Bônus de registro', callback_data: 'admin_bonus_register' }],
+        [{ text: '📢 Transmitir a todos', callback_data: 'admin_broadcast_all' }],
+        [{ text: '⏮️ Voltar', callback_data: 'admin_menu_config' }],
+      ],
+    },
+  });
+}
+
 export async function listUsers(ctx: Context, page: number = 0) {
   if (!(await isAdmin(ctx))) return;
 
@@ -30,16 +43,12 @@ export async function listUsers(ctx: Context, page: number = 0) {
   if (page < totalPages - 1) navButtons.push({ text: 'Próxima ➡️', callback_data: `users_page_${page + 1}` });
   if (navButtons.length) buttons.push(navButtons);
 
-  // Botão para pesquisar usuário
   buttons.push([{ text: '🔍 Pesquisar usuário', callback_data: 'users_search' }]);
   buttons.push([{ text: '⏮️ Voltar', callback_data: 'admin_config_users' }]);
 
-  await ctx.editMessage(text, {
-    reply_markup: { inline_keyboard: buttons },
-  });
+  await ctx.editMessage(text, { reply_markup: { inline_keyboard: buttons } });
 }
 
-// Pesquisa usuário por ID, Telegram ID ou username
 export async function searchUser(ctx: Context, term: string) {
   if (!(await isAdmin(ctx))) return;
 
@@ -47,17 +56,10 @@ export async function searchUser(ctx: Context, term: string) {
   if (/^\d+$/.test(term)) {
     const num = parseInt(term);
     user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { id: num },
-          { telegramId: BigInt(num) },
-        ],
-      },
+      where: { OR: [{ id: num }, { telegramId: BigInt(num) }] },
     });
   } else {
-    user = await prisma.user.findFirst({
-      where: { username: { contains: term, mode: 'insensitive' } },
-    });
+    user = await prisma.user.findFirst({ where: { username: { contains: term, mode: 'insensitive' } } });
   }
 
   if (!user) {
@@ -70,21 +72,6 @@ export async function searchUser(ctx: Context, term: string) {
   await viewUserDetails(ctx, user.id);
 }
 
-// Mostra menu principal de usuários
-export async function showUsersMenu(ctx: Context) {
-  if (!(await isAdmin(ctx))) return;
-  await ctx.editMessage('👥 GERENCIAR USUÁRIOS\n\nEscolha uma ação:', {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '📋 Listar usuários', callback_data: 'users_list' }],
-        [{ text: '🔍 Pesquisar', callback_data: 'users_search' }],
-        [{ text: '⏮️ Voltar', callback_data: 'admin_menu_config' }],
-      ],
-    },
-  });
-}
-
-// Visualiza detalhes de um usuário
 export async function viewUserDetails(ctx: Context, userId: number) {
   if (!(await isAdmin(ctx))) return;
 
@@ -93,7 +80,6 @@ export async function viewUserDetails(ctx: Context, userId: number) {
     include: {
       orders: { orderBy: { createdAt: 'desc' }, take: 5, include: { product: true } },
       withdrawals: { orderBy: { createdAt: 'desc' }, take: 5 },
-      giftCards: { where: { usedByUserId: userId } },
     },
   });
 
@@ -114,8 +100,7 @@ export async function viewUserDetails(ctx: Context, userId: number) {
     `💰 Saldo: ${formatCurrency(user.balance)}\n` +
     `🤝 Saldo afiliado: ${formatCurrency(user.affiliateBalance)}\n` +
     `🛒 Compras: ${user.orders.length}\n` +
-    `💵 Total gasto: ${formatCurrency(totalSpent)}\n` +
-    `🎁 Gift cards resgatados: ${user.giftCards.length}\n\n` +
+    `💵 Total gasto: ${formatCurrency(totalSpent)}\n\n` +
     `Últimas compras:\n` +
     (user.orders.length ? user.orders.map(o => `- ${o.product.name} (${o.status}) - ${formatCurrency(o.totalPrice)}`).join('\n') : 'Nenhuma') + '\n\n' +
     `Saques solicitados: ${user.withdrawals.length}`;
@@ -133,7 +118,6 @@ export async function viewUserDetails(ctx: Context, userId: number) {
   });
 }
 
-// Ajusta saldo do usuário
 export async function editUserBalance(ctx: Context, userId: number) {
   if (!(await isAdmin(ctx))) return;
 
@@ -158,14 +142,12 @@ export async function editUserBalance(ctx: Context, userId: number) {
         await prisma.user.update({ where: { id: userId }, data: { balance: num } });
       }
 
-      await logAction({ action: 'BALANCE_ADJUSTED', userId, details: { by: ctx.from?.id, value } });
       await ctx.editMessage('✅ Saldo atualizado.');
       await viewUserDetails(ctx, userId);
     },
   });
 }
 
-// Alterna bloqueio do usuário
 export async function toggleUserBlock(ctx: Context, userId: number) {
   if (!(await isAdmin(ctx))) return;
 
@@ -174,12 +156,10 @@ export async function toggleUserBlock(ctx: Context, userId: number) {
 
   const newStatus = user.status === 'BLOCKED' ? 'ACTIVE' : 'BLOCKED';
   await prisma.user.update({ where: { id: userId }, data: { status: newStatus } });
-  await logAction({ action: newStatus === 'BLOCKED' ? 'USER_BLOCKED' : 'USER_UNBLOCKED', userId, details: { by: ctx.from?.id } });
   await ctx.editMessage(`✅ Usuário ${newStatus === 'BLOCKED' ? 'bloqueado' : 'desbloqueado'}.`);
   await viewUserDetails(ctx, userId);
 }
 
-// Envia mensagem individual para o usuário
 export async function sendMessageToUser(ctx: Context, userId: number) {
   if (!(await isAdmin(ctx))) return;
 
@@ -191,7 +171,6 @@ export async function sendMessageToUser(ctx: Context, userId: number) {
 
       const bot = (await import('../bot')).default;
       await bot.telegram.sendMessage(user.telegramId.toString(), text);
-      await logAction({ action: 'ADMIN_MESSAGE_SENT', userId, details: { by: ctx.from?.id, text } });
       await ctx.editMessage('✅ Mensagem enviada.');
     },
   });
