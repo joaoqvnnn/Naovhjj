@@ -1,6 +1,6 @@
-// Lista completa de bancos brasileiros (código de compensação e nome)
+// Lista de bancos brasileiros (código de compensação e nome)
 // Fonte: Banco Central do Brasil - STR
-// Total: mais de 500 registros
+// Inclui principais bancos, fintechs, cooperativas e caixas econômicas
 
 export const banksComplete: Array<{ code: string; name: string }> = [
   { code: '001', name: 'Banco do Brasil S.A.' },
@@ -138,7 +138,7 @@ export const banksComplete: Array<{ code: string; name: string }> = [
   { code: '197', name: 'Stone Pagamentos S.A.' },
   { code: '198', name: 'Cooperativa Central de Crédito do Estado de Goiás - Sicoob Goiás' },
   { code: '199', name: 'Central de Cooperativas de Crédito do Estado de Mato Grosso - Central Sicredi MT' },
-  // ... (os demais bancos seguem o mesmo formato, totalizando mais de 500)
+  // ... (adicionar os demais bancos para completar os 500+; a lista oficial pode ser carregada de um JSON externo)
 ];
 
 export function getFullBankOptionsHtml(): string {
