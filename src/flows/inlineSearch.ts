@@ -22,7 +22,10 @@ export async function handleInlineQuery(ctx: Context) {
       message_text: `🎯 ${p.name}\n💲 Valor: ${formatCurrency(p.price)}\n📝 ${p.description || ''}\n\nPara comprar, clique no botão abaixo.`,
     },
     reply_markup: {
-      inline_keyboard: [[{ text: '💳 Comprar', callback_data: `comprar_${p.id}` }]],
+      inline_keyboard: [
+        [{ text: '💳 Comprar', callback_data: `comprar_${p.id}` }],
+        [{ text: '🔍 Ver detalhes', callback_data: `ver_produto_${p.id}` }],
+      ],
     },
   }));
 
