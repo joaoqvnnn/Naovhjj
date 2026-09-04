@@ -198,6 +198,8 @@ model Order {
   whatsapp      String?
   deliveredAt   DateTime?
   expiresAt     DateTime?
+  accessCount   Int           @default(0)
+  maxAccess     Int?          // limite personalizado; se nulo, usa configuração global
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
