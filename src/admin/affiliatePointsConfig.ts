@@ -2,9 +2,7 @@ import { Context } from '../types/context';
 import prisma from '../database';
 import { isAdmin } from './userManagement';
 import { startCapture } from '../middlewares/capture';
-import { logAction } from '../services/logger';
 
-// Mostra painel de configuração de afiliados
 export async function showAffiliateConfig(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
 
@@ -18,7 +16,7 @@ export async function showAffiliateConfig(ctx: Context) {
   const on = systemOn ? systemOn.value : false;
   const points = pointsPerRecharge ? parseInt(pointsPerRecharge.value.toString()) : 1;
 
-  const text = `💰 CONFIGURAR AFILIADOS\n\n` +
+  const text = `💰 Configurar Afiliados\n\n` +
     `Sistema de indicação: ${on ? '🟢 On' : '🔴 Off'}\n` +
     `Pontos por recarga: ${points}\n` +
     `Pontos mínimos para converter: ${min}\n` +
@@ -31,29 +29,34 @@ export async function showAffiliateConfig(ctx: Context) {
         [{ text: 'PONTOS POR RECARGA', callback_data: 'aff_set_points' }],
         [{ text: 'PONTOS MINIMO PARA CONVERTER', callback_data: 'aff_set_min' }],
         [{ text: 'MULTIPLICADOR PARA CONVERTER', callback_data: 'aff_set_multiplier' }],
-        [{ text: '⏮️ Voltar', callback_data: 'admin_config' }],
+        [{ text: '⏮️ Voltar', callback_data: 'admin_menu_config' }],
       ],
     },
   });
 }
 
-// Alterna sistema de indicação
 export async function toggleAffiliateSystem(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
+
   const setting = await prisma.setting.findUnique({ where: { key: 'affiliate_system' } });
   const current = setting?.value || false;
+
   await prisma.setting.upsert({
     where: { key: 'affiliate_system' },
     update: { value: !current },
     create: { key: 'affiliate_system', value: !current },
   });
-  await logAction({ action: 'AFFILIATE_SYSTEM_TOGGLED', details: { enabled: !current } });
-  await showAffiliateConfig(ctx);
+
+  await ctx.editMessage(`✅ Sistema de indicação ${!current ? 'ativado' : 'desativado'}.`, {
+    reply_markup: {
+      inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'admin_config_affiliates' }]],
+    },
+  });
 }
 
-// Define pontos por recarga
 export async function setAffiliatePoints(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
+
   await startCapture(ctx, 'aff_points', 'Digite a quantidade de pontos por recarga:', {
     validate: async (input) => {
       const num = parseInt(input);
@@ -65,16 +68,18 @@ export async function setAffiliatePoints(ctx: Context) {
         update: { value: parseInt(value) },
         create: { key: 'affiliate_points_per_recharge', value: parseInt(value) },
       });
-      await logAction({ action: 'AFFILIATE_POINTS_PER_RECHARGE_CHANGED', details: { points: parseInt(value) } });
-      await ctx.editMessage('✅ Pontos por recarga atualizados.');
-      await showAffiliateConfig(ctx);
+      await ctx.editMessage('✅ Pontos por recarga atualizados.', {
+        reply_markup: {
+          inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'admin_config_affiliates' }]],
+        },
+      });
     },
   });
 }
 
-// Define pontos mínimos para converter
 export async function setAffiliateMin(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
+
   await startCapture(ctx, 'aff_min', 'Digite os pontos mínimos para converter:', {
     validate: async (input) => {
       const num = parseInt(input);
@@ -86,16 +91,18 @@ export async function setAffiliateMin(ctx: Context) {
         update: { value: parseInt(value) },
         create: { key: 'affiliate_points_min', value: parseInt(value) },
       });
-      await logAction({ action: 'AFFILIATE_POINTS_MIN_CHANGED', details: { min: parseInt(value) } });
-      await ctx.editMessage('✅ Pontos mínimos atualizados.');
-      await showAffiliateConfig(ctx);
+      await ctx.editMessage('✅ Pontos mínimos atualizados.', {
+        reply_markup: {
+          inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'admin_config_affiliates' }]],
+        },
+      });
     },
   });
 }
 
-// Define multiplicador para conversão
 export async function setAffiliateMultiplier(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
+
   await startCapture(ctx, 'aff_multiplier', 'Digite o multiplicador (ex: 0.01):', {
     validate: async (input) => {
       const num = parseFloat(input);
@@ -107,9 +114,11 @@ export async function setAffiliateMultiplier(ctx: Context) {
         update: { value: parseFloat(value) },
         create: { key: 'affiliate_multiplier', value: parseFloat(value) },
       });
-      await logAction({ action: 'AFFILIATE_MULTIPLIER_CHANGED', details: { multiplier: parseFloat(value) } });
-      await ctx.editMessage('✅ Multiplicador atualizado.');
-      await showAffiliateConfig(ctx);
+      await ctx.editMessage('✅ Multiplicador atualizado.', {
+        reply_markup: {
+          inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'admin_config_affiliates' }]],
+        },
+      });
     },
   });
 }
