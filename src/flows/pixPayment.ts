@@ -7,11 +7,18 @@ import { logAction } from '../services/logger';
 export async function startPixPayment(ctx: Context, amount: number) {
   const userId = ctx.from!.id;
   const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
-  if (!user) return ctx.editMessage('Usuário não encontrado.');
+
+  if (!user) return ctx.editMessageText('Usuário não encontrado.');
 
   const pixConfig = await getPixConfig();
-  if (amount < pixConfig.minAmount) return ctx.editMessage(`❌ Valor mínimo: ${formatCurrency(pixConfig.minAmount)}`);
-  if (amount > pixConfig.maxAmount) return ctx.editMessage(`❌ Valor máximo: ${formatCurrency(pixConfig.maxAmount)}`);
+  if (amount < pixConfig.minAmount) {
+    await ctx.editMessageText(`❌ Valor mínimo: ${formatCurrency(pixConfig.minAmount)}`);
+    return;
+  }
+  if (amount > pixConfig.maxAmount) {
+    await ctx.editMessageText(`❌ Valor máximo: ${formatCurrency(pixConfig.maxAmount)}`);
+    return;
+  }
 
   try {
     const paymentData = await generatePixPayment(amount, user.id, 'Recarga de saldo');
@@ -29,53 +36,60 @@ export async function startPixPayment(ctx: Context, amount: number) {
       },
     });
 
-    // Busca template personalizado de Pix (se existir)
-    const template = await prisma.messageTemplate.findUnique({ where: { key: 'pix' } });
-    let text: string;
-
-    if (template) {
-      text = template.text
-        .replace(/\{valor\}/g, formatCurrency(amount))
-        .replace(/\{pix\}/g, paymentData.qrCode)
-        .replace(/\{id\}/g, String(dbPayment.id))
-        .replace(/\{expiracao\}/g, `${pixConfig.expirationMinutes} minutos`);
-    } else {
-      text = `💰 Comprar Saldo com Pix\n\n` +
-        `💵 Valor: ${formatCurrency(amount)}\n` +
-        `⏱️ Expira em: ${pixConfig.expirationMinutes} min\n` +
-        `✨ ID: ${dbPayment.id}\n\n` +
-        (paymentData.mode === 'automatico' ? `💎 Pix Copia e Cola:\n<code>${paymentData.qrCode}</code>\n\n` : `💎 Chave Pix manual:\n<code>${paymentData.qrCode}</code>\n\n`);
-    }
+    const text = `💰 Comprar Saldo com Pix\n\n` +
+      `💵 Valor: ${formatCurrency(amount)}\n` +
+      `⏱️ Expira em: ${pixConfig.expirationMinutes} min\n` +
+      `✨ ID: ${dbPayment.id}\n\n` +
+      `💎 Pix Copia e Cola:\n<code>${paymentData.qrCode}</code>\n\n` +
+      `Após pagar, clique em "Já paguei".`;
 
     const inlineKeyboard = [];
     if (pixConfig.showCopyButton && paymentData.qrCode) {
       inlineKeyboard.push([{ text: '📋 Copiar código Pix', callback_data: `pix_copy_${dbPayment.id}` }]);
     }
-    if (paymentData.mode === 'automatico') {
-      inlineKeyboard.push([{ text: '🔄 Já paguei', callback_data: `pix_check_${dbPayment.id}` }]);
-    } else {
-      inlineKeyboard.push([{ text: '📢 Avisei pagamento', callback_data: `pix_manual_notify_${dbPayment.id}` }]);
-    }
+    inlineKeyboard.push([{ text: '🔄 Já paguei', callback_data: `pix_check_${dbPayment.id}` }]);
     inlineKeyboard.push([{ text: '⏮️ Voltar', callback_data: 'voltar_inicio' }]);
 
-    // Imagem padrão do template, se houver
-    const templateImage = template?.imageUrl;
-
-    if (pixConfig.showQrCode && (paymentData.qrCodeImage || templateImage)) {
-      // Usa a imagem do QR Code gerado ou a imagem do template
-      const imageToSend = paymentData.qrCodeImage || templateImage;
-      await ctx.replyWithPhoto(imageToSend, {
+    if (pixConfig.showQrCode && paymentData.qrCodeImage) {
+      await ctx.replyWithPhoto(paymentData.qrCodeImage, {
         caption: text,
         parse_mode: 'HTML',
         reply_markup: { inline_keyboard: inlineKeyboard },
       });
     } else {
-      await ctx.editMessage(text, {
+      await ctx.editMessageText(text, {
         parse_mode: 'HTML',
         reply_markup: { inline_keyboard: inlineKeyboard },
       });
     }
   } catch (error: any) {
-    await ctx.editMessage(`❌ ${error.message}`);
+    await ctx.editMessageText(`❌ ${error.message}`);
+  }
+}
+
+export async function checkPixPayment(ctx: Context, paymentId: number) {
+  const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
+  if (!payment || payment.status !== 'PENDING') return;
+
+  try {
+    const status = await checkPixPaymentStatus(payment.externalId!);
+    if (status === 'APPROVED') {
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.update({ where: { id: payment.id }, data: { status: 'APPROVED', paidAt: new Date() } });
+        await tx.user.update({ where: { id: payment.userId }, data: { balance: { increment: payment.amount } } });
+        await tx.recharge.create({
+          data: { userId: payment.userId, amount: payment.amount, paymentId: payment.id, status: 'APPROVED' },
+        });
+      });
+      await ctx.editMessageText('✅ Pagamento aprovado! Saldo creditado.');
+    } else if (status === 'CANCELLED' || status === 'EXPIRED') {
+      await prisma.payment.update({ where: { id: payment.id }, data: { status: 'EXPIRED' } });
+      await ctx.editMessageText('⌛️ Pagamento expirado ou cancelado.');
+    } else {
+      await ctx.editMessageText('⏳ Pagamento ainda pendente.');
+    }
+  } catch (error) {
+    console.error(error);
+    await ctx.editMessageText('❌ Erro ao verificar pagamento.');
   }
 }
