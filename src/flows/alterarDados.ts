@@ -3,30 +3,44 @@ import prisma from '../database';
 import { startCapture } from '../middlewares/capture';
 import { normalizePhone } from '../utils/phoneValidation';
 
-// Inicia alteração de WhatsApp
+export async function showAlterarDados(ctx: Context) {
+  const userId = ctx.from!.id;
+  const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
+
+  if (!user) return ctx.editMessageText('Usuário não encontrado.');
+
+  await ctx.editMessageText(
+    `✏️ Alterar Dados\n\n` +
+    `📱 WhatsApp: ${user.whatsapp || 'Não informado'}\n\n` +
+    `Selecione o dado para alterar:`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📱 WhatsApp', callback_data: 'alterar_whatsapp' }],
+          [{ text: '⏮️ Voltar', callback_data: 'menu_perfil' }],
+        ],
+      },
+    }
+  );
+}
+
 export async function startChangeWhatsApp(ctx: Context) {
   const userId = ctx.from!.id;
   const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
 
   if (!user) return;
 
-  const currentPhone = user.whatsapp || 'Não informado';
-
-  await startCapture(ctx, 'change_whatsapp', `📱 Seu WhatsApp atual: ${currentPhone}\n\nDigite o novo número (com DDD, pode incluir +55 ou não):`, {
+  await startCapture(ctx, 'change_whatsapp', 'Digite o novo número de WhatsApp (com DDD):', {
     validate: async (input) => {
       const normalized = normalizePhone(input);
-      if (!normalized) {
-        return '❌ Número inválido. Digite no formato correto, ex: +55 (44) 99999-9999 ou 44999999999.';
-      }
-      return null;
+      return normalized ? null : 'Número inválido. Use formato +55 (44) 99999-9999';
     },
-    onSuccess: async (ctx, rawPhone) => {
-      const normalized = normalizePhone(rawPhone)!;
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { whatsapp: normalized },
+    onSuccess: async (ctx, phone) => {
+      const normalized = normalizePhone(phone)!;
+      await prisma.user.update({ where: { id: user.id }, data: { whatsapp: normalized } });
+      await ctx.editMessageText(`✅ WhatsApp atualizado para: ${normalized}`, {
+        reply_markup: { inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'menu_perfil' }]] },
       });
-      await ctx.editMessage(`✅ WhatsApp atualizado para: ${normalized}`);
     },
   });
 }
