@@ -3,9 +3,7 @@ import prisma from '../database';
 import { isAdmin } from '../admin/userManagement';
 import { formatCurrency, formatDateTime } from '../utils/format';
 import PDFDocument from 'pdfkit';
-import { Readable } from 'stream';
 
-// Gera PDF com histórico do usuário e envia no chat
 export async function generateUserHistoryPdf(ctx: Context, userId: number) {
   if (!(await isAdmin(ctx))) return;
 
@@ -19,36 +17,30 @@ export async function generateUserHistoryPdf(ctx: Context, userId: number) {
 
   if (!user) return ctx.editMessage('Usuário não encontrado.');
 
-  // Cria documento PDF
   const doc = new PDFDocument({ margin: 50 });
   const buffers: Buffer[] = [];
   doc.on('data', (chunk) => buffers.push(chunk));
   doc.on('end', async () => {
     const pdfBuffer = Buffer.concat(buffers);
-
-    // Envia como documento
     const bot = (await import('../bot')).default;
-    await bot.telegram.sendDocument(user.telegramId.toString(), {
+    await bot.telegram.sendDocument(ctx.chat!.id, {
       source: pdfBuffer,
       filename: `historico_${user.id}.pdf`,
     });
   });
 
-  // Cabeçalho
   doc.fontSize(20).text('Histórico do Usuário', { align: 'center' });
   doc.moveDown();
   doc.fontSize(12).text(`Nome: ${user.firstName || 'N/A'} ${user.lastName || ''}`);
   doc.text(`Telegram ID: ${user.telegramId}`);
   doc.text(`Username: @${user.username || 'N/A'}`);
-  doc.text(`Saldo atual: ${formatCurrency(user.balance)}`);
+  doc.text(`Saldo: ${formatCurrency(user.balance)}`);
   doc.text(`Saldo afiliado: ${formatCurrency(user.affiliateBalance)}`);
   doc.moveDown();
 
-  // Histórico de compras
   doc.fontSize(14).text('Compras', { underline: true });
-  doc.moveDown(0.5);
   if (user.orders.length === 0) {
-    doc.text('Nenhuma compra registrada.');
+    doc.text('Nenhuma compra.');
   } else {
     for (const order of user.orders) {
       doc.fontSize(10).text(`#${order.id} - ${order.product.name}`);
@@ -59,12 +51,10 @@ export async function generateUserHistoryPdf(ctx: Context, userId: number) {
     }
   }
 
-  // Histórico de saques
   doc.moveDown();
   doc.fontSize(14).text('Saques', { underline: true });
-  doc.moveDown(0.5);
   if (user.withdrawals.length === 0) {
-    doc.text('Nenhum saque solicitado.');
+    doc.text('Nenhum saque.');
   } else {
     for (const w of user.withdrawals) {
       doc.fontSize(10).text(`#${w.id} - ${w.method}`);
@@ -76,6 +66,5 @@ export async function generateUserHistoryPdf(ctx: Context, userId: number) {
   }
 
   doc.end();
-
-  await ctx.answerCbQuery('PDF gerado e enviado para o usuário.');
+  await ctx.answerCbQuery('PDF gerado e enviado.');
 }
