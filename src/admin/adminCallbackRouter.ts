@@ -8,12 +8,11 @@ import { showLoginsPanel, addLogins, removeLogin, removeByPlatform, zeroStock, d
 import { showResearchConfig, addResearchImage, removeResearchImage } from './researchConfig';
 import { showTemplateList, viewTemplate, editTemplateText, editTemplateImage, resetTemplate } from './templateEditor';
 import { showButtonList, viewButtonConfig, addButton, editButton, removeButton, reorderButtons, resetButtons } from './buttonEditorFull';
-import { showBroadcastMenuWithButtons, startBroadcastText, showButtonOptions, addBuyButton, addBalanceButton, addRegisterButton, addSupportButton, addLinkButton, sendBroadcastWithButtons } from './broadcastWithButtons';
+import { showBroadcastMenuWithButtons, startBroadcastText, addBuyButton, addBalanceButton, addRegisterButton, addSupportButton, addLinkButton, sendBroadcastWithButtons } from './broadcastWithButtons';
 import { showAntifloodConfig, setAntifloodParam } from './antifloodConfig';
 import { showNotificationConfig, toggleNotification } from './notifications';
 import { showWithdrawalMenu, viewWithdrawal, approveWithdrawal, rejectWithdrawal, reprocessWithdrawal } from './withdrawalReview';
 import { showManualPixPending, viewManualPix, confirmManualPixAction, rejectManualPixAction } from './pixManual';
-import { handleWhatsAppAntiFloodMenu, handleWhatsAppAntiFloodSet } from '../handlers/whatsappHandlers';
 import { showDetailedStats } from './dashboardStats';
 import { showPromotionSettings, setAutoDelete, setViewerExpiration } from './promotionSettings';
 import { showInactivityConfig, setInactivityDays } from './inactivityConfig';
@@ -21,12 +20,12 @@ import { showTranscriptionConfig, setTranscriptionKey } from './transcriptionCon
 import { showGiftCardAdminMenu, createGiftCard, createGiftCardBatch, listGiftCards, viewGiftCard, disableGiftCard, deleteGiftCard } from './giftCardAdmin';
 import { checkUpdates, viewSystemLogs, cleanOldData, backupConfig, resetMessages } from './updatesActions';
 import { showSecurityConfig, toggle2FA, toggleDeviceSecurity, toggleStrictDevice, setMaxPasswordAttempts, setBlockDuration } from './securityConfig';
-import { showUsersMenu, listUsers, searchUser, viewUserDetails, editUserBalance, toggleUserBlock, sendMessageToUser } from './userManagementFull';
+import { showUsersMenu, listUsers, searchUser, editUserBalance, toggleUserBlock, sendMessageToUser } from './userManagementFull';
 import { generateUserHistoryPdf } from '../flows/userHistoryPdf';
-import { startCapture } from '../middlewares/capture';
 import { showSobreConfig, editSobreContent } from './sobreConfig';
 import { showSupportConfig, editSupportLink, editBotVersion, editStoreName } from './supportConfig';
 import { listProducts, createProduct, editProduct, editProductName, editProductPrice, editProductDescription, editProductImage, toggleProduct, deleteProduct, listCategories, createCategory, editCategoryName, deleteCategory } from './productCategoryAdminFull';
+import { startCapture } from '../middlewares/capture';
 
 export async function routeAdminCallback(ctx: Context, callbackData: string) {
   // Dashboard e menus principais
@@ -36,14 +35,6 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'admin_menu_transactions') return showTransactionsMenu(ctx);
   if (callbackData === 'admin_menu_updates') return showUpdatesMenu(ctx);
 
-  // Segurança
-  if (callbackData === 'security_menu') return showSecurityConfig(ctx);
-  if (callbackData === 'security_toggle_2fa') return toggle2FA(ctx);
-  if (callbackData === 'security_toggle_device') return toggleDeviceSecurity(ctx);
-  if (callbackData === 'security_toggle_strict') return toggleStrictDevice(ctx);
-  if (callbackData === 'security_set_attempts') return setMaxPasswordAttempts(ctx);
-  if (callbackData === 'security_set_block') return setBlockDuration(ctx);
-
   // Configurações gerais
   if (callbackData === 'admin_config_general') return showGeneralConfig(ctx);
   if (callbackData === 'config_support') return setSupport(ctx);
@@ -51,15 +42,6 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'config_logdest') return setLogDestination(ctx);
   if (callbackData === 'config_maintenance') return toggleMaintenance(ctx);
   if (callbackData === 'config_restart') return restartBot(ctx);
-
-  // Suporte e Sobre
-  if (callbackData === 'admin_config_support') return showSupportConfig(ctx);
-  if (callbackData === 'support_edit_link') return editSupportLink(ctx);
-  if (callbackData === 'support_edit_version') return editBotVersion(ctx);
-  if (callbackData === 'support_edit_store') return editStoreName(ctx);
-
-  if (callbackData === 'admin_config_sobre') return showSobreConfig(ctx);
-  if (callbackData === 'sobre_edit') return editSobreContent(ctx);
 
   // Admins
   if (callbackData === 'admin_config_admins') return listAdmins(ctx);
@@ -79,7 +61,7 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'users_list') return listUsers(ctx);
   if (callbackData.startsWith('users_page_')) return listUsers(ctx, parseInt(callbackData.split('_')[2]));
   if (callbackData === 'users_search') {
-    return startCapture(ctx, 'users_search_term', 'Digite o ID, Telegram ID ou username para pesquisar:', {
+    return startCapture(ctx, 'users_search_term', 'Digite o ID, Telegram ID ou username:', {
       validate: async (input) => input.trim().length > 0 ? null : 'Digite algo.',
       onSuccess: async (ctx, term) => searchUser(ctx, term),
     });
@@ -156,43 +138,25 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
 
   // Broadcast
   if (callbackData === 'admin_actions_broadcast') return showBroadcastMenuWithButtons(ctx);
-  if (callbackData.startsWith('bcast_')) {
-    if (callbackData === 'bcast_all') return startBroadcastText(ctx, 'all');
-    if (callbackData === 'bcast_active') return startBroadcastText(ctx, 'active');
-    if (callbackData === 'bcast_buyers') return startBroadcastText(ctx, 'buyers');
-    if (callbackData === 'bcast_affiliates') return startBroadcastText(ctx, 'affiliates');
-    if (callbackData === 'bcast_btn_comprar') return addBuyButton(ctx);
-    if (callbackData === 'bcast_btn_saldo') return addBalanceButton(ctx);
-    if (callbackData === 'bcast_btn_cadastrar') return addRegisterButton(ctx);
-    if (callbackData === 'bcast_btn_suporte') return addSupportButton(ctx);
-    if (callbackData === 'bcast_btn_link') return addLinkButton(ctx);
-    if (callbackData === 'bcast_send') return sendBroadcastWithButtons(ctx);
-    if (callbackData === 'bcast_cancel') return ctx.editMessage('Transmissão cancelada.');
-  }
+  if (callbackData === 'bcast_all') return startBroadcastText(ctx, 'all');
+  if (callbackData === 'bcast_active') return startBroadcastText(ctx, 'active');
+  if (callbackData === 'bcast_buyers') return startBroadcastText(ctx, 'buyers');
+  if (callbackData === 'bcast_affiliates') return startBroadcastText(ctx, 'affiliates');
+  if (callbackData === 'bcast_btn_comprar') return addBuyButton(ctx);
+  if (callbackData === 'bcast_btn_saldo') return addBalanceButton(ctx);
+  if (callbackData === 'bcast_btn_cadastrar') return addRegisterButton(ctx);
+  if (callbackData === 'bcast_btn_suporte') return addSupportButton(ctx);
+  if (callbackData === 'bcast_btn_link') return addLinkButton(ctx);
+  if (callbackData === 'bcast_send') return sendBroadcastWithButtons(ctx);
+  if (callbackData === 'bcast_cancel') return ctx.editMessage('Transmissão cancelada.');
 
   // Anti-flood Telegram
   if (callbackData === 'antiflood_menu') return showAntifloodConfig(ctx);
   if (callbackData.startsWith('antiflood_set_')) return setAntifloodParam(ctx, callbackData.split('_')[2]);
 
   // Anti-flood WhatsApp
-  if (callbackData === 'wa_af_menu') return handleWhatsAppAntiFloodMenu(ctx);
-  if (callbackData.startsWith('wa_af_set_')) {
-    const param = callbackData.split('_')[3];
-    return handleWhatsAppAntiFloodSet(ctx, param);
-  }
-
-  // Menu de anti-flood principal
-  if (callbackData === 'admin_actions_antiflood') {
-    return ctx.editMessage('🛡️ Anti-Flood\n\nEscolha:', {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: 'Telegram', callback_data: 'antiflood_menu' }],
-          [{ text: 'WhatsApp', callback_data: 'wa_af_menu' }],
-          [{ text: '⏮️ Voltar', callback_data: 'admin_menu_actions' }],
-        ],
-      },
-    });
-  }
+  if (callbackData === 'wa_af_menu') return showWhatsAppAntiFloodConfig(ctx);
+  if (callbackData.startsWith('wa_af_set_')) return setWhatsAppAntiFloodParam(ctx, callbackData.split('_')[3]);
 
   // Notificações
   if (callbackData === 'admin_actions_notifications') return showNotificationConfig(ctx);
@@ -210,7 +174,7 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData.startsWith('pixmanual_confirm_')) return confirmManualPixAction(ctx, parseInt(callbackData.split('_')[2]));
   if (callbackData.startsWith('pixmanual_reject_')) return rejectManualPixAction(ctx, parseInt(callbackData.split('_')[2]));
 
-  // Estatísticas detalhadas
+  // Estatísticas
   if (callbackData === 'admin_transactions_stats') return showDetailedStats(ctx);
   if (callbackData === 'stats_refresh') return showDetailedStats(ctx);
 
@@ -227,7 +191,7 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData === 'admin_transcription') return showTranscriptionConfig(ctx);
   if (callbackData === 'transcription_set_key') return setTranscriptionKey(ctx);
 
-  // Gift Cards Admin
+  // Gift Cards
   if (callbackData === 'giftcard_admin_menu') return showGiftCardAdminMenu(ctx);
   if (callbackData === 'giftcard_admin_create') return createGiftCard(ctx);
   if (callbackData === 'giftcard_admin_batch') return createGiftCardBatch(ctx);
@@ -236,7 +200,7 @@ export async function routeAdminCallback(ctx: Context, callbackData: string) {
   if (callbackData.startsWith('giftcard_admin_disable_')) return disableGiftCard(ctx, parseInt(callbackData.split('_')[3]));
   if (callbackData.startsWith('giftcard_admin_delete_')) return deleteGiftCard(ctx, parseInt(callbackData.split('_')[3]));
 
-  // Atualizações reais
+  // Atualizações
   if (callbackData === 'admin_updates_check') return checkUpdates(ctx);
   if (callbackData === 'admin_updates_logs') return viewSystemLogs(ctx);
   if (callbackData === 'admin_updates_clean') return cleanOldData(ctx);
