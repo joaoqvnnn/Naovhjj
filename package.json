@@ -4,7 +4,7 @@
   "description": "Bot de loja digital no Telegram com painel administrativo, Pix automático, entrega por e-mail/WhatsApp, afiliados, saques e muito mais.",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --noEmitOnError false",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "prisma:generate": "prisma generate",
