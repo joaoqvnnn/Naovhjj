@@ -2,12 +2,11 @@ import { Context } from '../types/context';
 import prisma from '../database';
 import { isAdmin } from './userManagement';
 import { startCapture } from '../middlewares/capture';
-import { logAction } from '../services/logger';
 
-// Painel de logins
 export async function showLoginsPanel(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
   const count = await prisma.stockUnit.count({ where: { isSold: false } });
+
   await ctx.editMessage(`📦 LOGINS NO ESTOQUE: ${count}\n\nEscolha uma ação:`, {
     reply_markup: {
       inline_keyboard: [
@@ -18,16 +17,15 @@ export async function showLoginsPanel(ctx: Context) {
         [{ text: 'ZERAR ESTOQUE', callback_data: 'logins_zero' }],
         [{ text: 'MUDAR VALOR DO SERVIÇO', callback_data: 'logins_change_price' }],
         [{ text: 'MUDAR VALOR DE TODOS', callback_data: 'logins_change_all_price' }],
-        [{ text: '⏮️ Voltar', callback_data: 'admin_config_logins' }],
+        [{ text: '⏮️ Voltar', callback_data: 'admin_menu_config' }],
       ],
     },
   });
 }
 
-// Adiciona logins em lote
 export async function addLogins(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
-  await startCapture(ctx, 'logins_add', 'Envie os logins no formato:\nNOME===VALOR===DESCRICAO===EMAIL===SENHA===DURACAO\n\nSepare múltiplos logins por linha.', {
+  await startCapture(ctx, 'logins_add', 'Envie os logins no formato:\nNOME===VALOR===DESCRICAO===EMAIL===SENHA===DURACAO\n\nUm por linha.', {
     validate: async (input) => input.trim().length > 0 ? null : 'Formato inválido.',
     onSuccess: async (ctx, text) => {
       const lines = text.split('\n').filter(l => l.trim());
@@ -38,15 +36,10 @@ export async function addLogins(ctx: Context) {
           const [name, value, description, email, password, duration] = parts;
           let product = await prisma.product.findFirst({ where: { name } });
           if (!product) {
-            product = await prisma.product.create({
-              data: { name, price: parseFloat(value), description },
-            });
+            product = await prisma.product.create({ data: { name, price: parseFloat(value), description } });
           }
           await prisma.stockUnit.create({
-            data: {
-              productId: product.id,
-              content: JSON.stringify({ email, password, description, duration }),
-            },
+            data: { productId: product.id, content: JSON.stringify({ email, password, description, duration }) },
           });
           created++;
         }
@@ -57,32 +50,34 @@ export async function addLogins(ctx: Context) {
   });
 }
 
-// Remove login específico
 export async function removeLogin(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
-  await startCapture(ctx, 'logins_remove', 'Envie no formato SERVICO===EMAIL para remover:', {
+  await startCapture(ctx, 'logins_remove', 'Envie no formato SERVICO===EMAIL:', {
     validate: async (input) => input.includes('===') ? null : 'Formato inválido.',
     onSuccess: async (ctx, text) => {
       const [service, email] = text.split('===').map(s => s.trim());
       const product = await prisma.product.findFirst({ where: { name: service } });
-      if (!product) return ctx.editMessage('Serviço não encontrado.');
-      const removed = await prisma.stockUnit.deleteMany({
-        where: { productId: product.id, content: { contains: email } },
-      });
+      if (!product) {
+        await ctx.editMessage('Serviço não encontrado.');
+        return;
+      }
+      const removed = await prisma.stockUnit.deleteMany({ where: { productId: product.id, content: { contains: email } } });
       await ctx.editMessage(`✅ ${removed.count} login(s) removido(s).`);
       await showLoginsPanel(ctx);
     },
   });
 }
 
-// Remove por plataforma
 export async function removeByPlatform(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
   await startCapture(ctx, 'logins_remove_platform', 'Envie o nome da plataforma:', {
     validate: async (input) => input.trim() ? null : 'Nome inválido.',
     onSuccess: async (ctx, platform) => {
       const product = await prisma.product.findFirst({ where: { name: platform } });
-      if (!product) return ctx.editMessage('Plataforma não encontrada.');
+      if (!product) {
+        await ctx.editMessage('Plataforma não encontrada.');
+        return;
+      }
       await prisma.stockUnit.deleteMany({ where: { productId: product.id } });
       await ctx.editMessage(`✅ Todos os logins de ${platform} removidos.`);
       await showLoginsPanel(ctx);
@@ -90,7 +85,6 @@ export async function removeByPlatform(ctx: Context) {
   });
 }
 
-// Zerar estoque
 export async function zeroStock(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
   await prisma.stockUnit.deleteMany({ where: { isSold: false } });
@@ -98,7 +92,6 @@ export async function zeroStock(ctx: Context) {
   await showLoginsPanel(ctx);
 }
 
-// Estoque detalhado
 export async function detailedStock(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
   const units = await prisma.stockUnit.findMany({
@@ -107,10 +100,11 @@ export async function detailedStock(ctx: Context) {
     take: 20,
   });
   const text = units.map(u => `${u.product.name} - ${u.content}`).join('\n') || 'Nenhum estoque.';
-  await ctx.editMessage(`📋 Estoque detalhado:\n\n${text}`);
+  await ctx.editMessage(`📋 Estoque detalhado:\n\n${text}`, {
+    reply_markup: { inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'admin_config_logins' }]] },
+  });
 }
 
-// Alterar preço de um serviço
 export async function changeServicePrice(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
   await startCapture(ctx, 'logins_change_price', 'Envie SERVICO===VALOR:', {
@@ -118,7 +112,10 @@ export async function changeServicePrice(ctx: Context) {
     onSuccess: async (ctx, text) => {
       const [service, value] = text.split('===').map(s => s.trim());
       const product = await prisma.product.findFirst({ where: { name: service } });
-      if (!product) return ctx.editMessage('Serviço não encontrado.');
+      if (!product) {
+        await ctx.editMessage('Serviço não encontrado.');
+        return;
+      }
       await prisma.product.update({ where: { id: product.id }, data: { price: parseFloat(value) } });
       await ctx.editMessage(`✅ Preço de ${service} alterado para R$ ${value}.`);
       await showLoginsPanel(ctx);
@@ -126,7 +123,6 @@ export async function changeServicePrice(ctx: Context) {
   });
 }
 
-// Alterar preço de todos
 export async function changeAllPrices(ctx: Context) {
   if (!(await isAdmin(ctx))) return;
   await startCapture(ctx, 'logins_change_all_price', 'Digite o novo valor para todos:', {
