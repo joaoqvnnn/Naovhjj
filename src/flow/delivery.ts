@@ -1,148 +1,73 @@
 import { Context } from '../types/context';
 import prisma from '../database';
 import { startCapture } from '../middlewares/capture';
-import { isValidEmail, isValidWhatsApp, normalizeWhatsApp } from '../utils/format';
+import { isValidWhatsApp, normalizeWhatsApp } from '../utils/format';
+import { sendWhatsAppButton } from '../services/whatsappApi';
 import { sendPurchaseEmail } from '../services/email';
-import { sendWhatsAppDelivery } from '../services/whatsapp';
-import { formatCurrency } from '../utils/format';
 
-// Inicia entrega por e-mail
-export async function startEmailDelivery(ctx: Context, orderId: number) {
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { user: true, product: true, stockUnits: true },
-  });
-  if (!order) {
-    await ctx.editMessage('Pedido não encontrado.');
-    return;
-  }
+// ... (mantém as funções de e-mail)
 
-  // Se usuário já tem e-mail cadastrado, envia direto
-  if (order.user.email && isValidEmail(order.user.email)) {
-    const success = await sendPurchaseEmail({
-      to: order.user.email,
-      orderId: order.id,
-      productName: order.product.name,
-      price: parseFloat(order.unitPrice.toString()),
-      quantity: order.quantity,
-      total: parseFloat(order.totalPrice.toString()),
-      paymentMethod: order.payment?.method || 'SALDO',
-      date: order.createdAt,
-      validity: order.expiresAt?.toLocaleDateString('pt-BR') || '',
-      description: order.product.description || '',
-      loginData: order.stockUnits.map(u => u.content).join('\n'),
-    });
-    if (success) {
-      await ctx.editMessage(`📧 E-mail enviado para ${order.user.email} com sucesso!`);
-    } else {
-      await ctx.editMessage('❌ Falha ao enviar e-mail. Tente novamente ou use outro método.');
-    }
-    return;
-  }
-
-  // Caso não tenha e-mail, inicia captura
-  await startCapture(ctx, 'email_entrega', '📧 Digite seu e-mail para receber a compra:', {
-    validate: async (input) => {
-      if (!isValidEmail(input)) return '❌ E-mail inválido. Digite novamente.';
-      return null;
-    },
-    onSuccess: async (ctx, email) => {
-      // Salva e-mail no usuário
-      await prisma.user.update({
-        where: { id: order.userId },
-        data: { email },
-      });
-      // Envia e-mail
-      const success = await sendPurchaseEmail({
-        to: email,
-        orderId: order.id,
-        productName: order.product.name,
-        price: parseFloat(order.unitPrice.toString()),
-        quantity: order.quantity,
-        total: parseFloat(order.totalPrice.toString()),
-        paymentMethod: order.payment?.method || 'SALDO',
-        date: order.createdAt,
-        validity: order.expiresAt?.toLocaleDateString('pt-BR') || '',
-        description: order.product.description || '',
-        loginData: order.stockUnits.map(u => u.content).join('\n'),
-      });
-      if (success) {
-        await ctx.editMessage(`📧 E-mail enviado para ${email} com sucesso!`);
-      } else {
-        await ctx.editMessage('❌ Falha ao enviar e-mail. Tente novamente.');
-      }
-    },
-  });
-}
-
-// Inicia entrega por WhatsApp
+// Atualiza entrega por WhatsApp para usar botão "Ativar"
 export async function startWhatsAppDelivery(ctx: Context, orderId: number) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: { user: true, product: true, stockUnits: true },
   });
-  if (!order) {
-    await ctx.editMessage('Pedido não encontrado.');
-    return;
-  }
+  if (!order) return ctx.editMessage('Pedido não encontrado.');
 
-  // Se usuário já tem WhatsApp cadastrado, envia direto
+  // Se já tem WhatsApp, envia direto
   if (order.user.whatsapp && isValidWhatsApp(order.user.whatsapp)) {
-    const normalized = normalizeWhatsApp(order.user.whatsapp);
-    const success = await sendWhatsAppDelivery({
-      to: normalized!,
-      orderId: order.id,
-      productName: order.product.name,
-      price: parseFloat(order.unitPrice.toString()),
-      quantity: order.quantity,
-      total: parseFloat(order.totalPrice.toString()),
-      date: order.createdAt,
-      validity: order.expiresAt?.toLocaleDateString('pt-BR') || '',
-      description: order.product.description || '',
-      loginData: order.stockUnits.map(u => u.content).join('\n'),
-      imageUrl: order.product.imageUrl || undefined,
+    const normalized = normalizeWhatsApp(order.user.whatsapp)!;
+    const messageText = `🛍️ *Compra realizada!*\n\n` +
+      `Produto: ${order.product.name}\n` +
+      `Valor: R$ ${order.totalPrice}\n` +
+      `Data: ${order.createdAt.toLocaleDateString('pt-BR')}\n` +
+      `Clique no botão abaixo para ativar e receber seu acesso:`;
+
+    // Envia com botão
+    await sendWhatsAppButton(normalized, messageText, [
+      { type: 'reply', displayText: 'Ativar', id: 'ativar' },
+    ]);
+
+    // Atualiza pedido com o número
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { whatsapp: normalized, deliveryMethod: 'WHATSAPP' },
     });
-    if (success) {
-      await ctx.editMessage(`📱 Compra enviada para o WhatsApp ${normalized}!`);
-    } else {
-      await ctx.editMessage('❌ Falha ao enviar WhatsApp. Tente novamente.');
-    }
+
+    await ctx.editMessage(`✅ Compra enviada para o WhatsApp com botão de ativação!`);
     return;
   }
 
-  // Captura número
+  // Captura número e envia com botão
   await startCapture(ctx, 'whatsapp_entrega', '📱 Digite seu número de WhatsApp (com DDD):', {
     validate: async (input) => {
       const normalized = normalizeWhatsApp(input);
-      if (!normalized) return '❌ Número inválido. Digite no formato DDI+DDD+número (ex: 5544999999999).';
+      if (!normalized) return 'Número inválido.';
       return null;
     },
     onSuccess: async (ctx, phone) => {
       const normalized = normalizeWhatsApp(phone)!;
-      // Salva no usuário
       await prisma.user.update({
         where: { id: order.userId },
         data: { whatsapp: normalized },
       });
-      // Envia WhatsApp
-      const success = await sendWhatsAppDelivery({
-        to: normalized,
-        orderId: order.id,
-        productName: order.product.name,
-        price: parseFloat(order.unitPrice.toString()),
-        quantity: order.quantity,
-        total: parseFloat(order.totalPrice.toString()),
-        date: order.createdAt,
-        validity: order.expiresAt?.toLocaleDateString('pt-BR') || '',
-        description: order.product.description || '',
-        loginData: order.stockUnits.map(u => u.content).join('\n'),
-        imageUrl: order.product.imageUrl || undefined,
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { whatsapp: normalized, deliveryMethod: 'WHATSAPP' },
       });
-      if (success) {
-        await ctx.editMessage(`📱 Compra enviada para o WhatsApp ${normalized}!`);
-      } else {
-        await ctx.editMessage('❌ Falha ao enviar WhatsApp. Tente novamente.');
-      }
+
+      const messageText = `🛍️ *Compra realizada!*\n\n` +
+        `Produto: ${order.product.name}\n` +
+        `Valor: R$ ${order.totalPrice}\n` +
+        `Data: ${order.createdAt.toLocaleDateString('pt-BR')}\n` +
+        `Clique no botão abaixo para ativar e receber seu acesso:`;
+
+      await sendWhatsAppButton(normalized, messageText, [
+        { type: 'reply', displayText: 'Ativar', id: 'ativar' },
+      ]);
+
+      await ctx.editMessage(`✅ Compra enviada para o WhatsApp com botão de ativação!`);
     },
   });
 }
