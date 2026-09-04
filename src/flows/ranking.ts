@@ -2,11 +2,11 @@ import { Context } from '../types/context';
 import prisma from '../database';
 import { formatCurrency } from '../utils/format';
 
-// Tipos de ranking
 type RankingType = 'servicos' | 'recargas' | 'saldo' | 'compras';
 
-// Função principal que renderiza a mensagem do ranking
+// Função principal que renderiza o ranking com alternância visual
 export async function showRanking(ctx: Context, type: RankingType = 'servicos') {
+  // Botões com indicador visual
   const buttons = [
     { text: `${type === 'servicos' ? '✅' : '☑️'} Serviços mais vendidos`, callback_data: 'rank_servicos' },
     { text: `${type === 'recargas' ? '✅' : '☑️'} Usuários que mais recarregaram`, callback_data: 'rank_recargas' },
@@ -32,18 +32,24 @@ export async function showRanking(ctx: Context, type: RankingType = 'servicos') 
       break;
   }
 
-  // Edita a mensagem atual (ou envia nova se não houver mensagem para editar)
+  // Edita a mensagem atual (ou envia nova se não existir)
   if (ctx.session.messageIdToEdit && ctx.session.chatId) {
     await ctx.telegram.editMessageText(
       ctx.session.chatId,
       ctx.session.messageIdToEdit,
       undefined,
       text,
-      { reply_markup: { inline_keyboard: buttons.map(b => [{ text: b.text, callback_data: b.callback_data }]) } }
+      {
+        reply_markup: {
+          inline_keyboard: buttons.map(b => [{ text: b.text, callback_data: b.callback_data }]),
+        },
+      }
     );
   } else {
     const sent = await ctx.reply(text, {
-      reply_markup: { inline_keyboard: buttons.map(b => [{ text: b.text, callback_data: b.callback_data }]) },
+      reply_markup: {
+        inline_keyboard: buttons.map(b => [{ text: b.text, callback_data: b.callback_data }]),
+      },
     });
     if (sent.message_id) {
       ctx.session.messageIdToEdit = sent.message_id;
