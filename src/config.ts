@@ -18,7 +18,6 @@ interface Config {
     url: string;
     secret: string;
   };
-  redisUrl?: string;
 }
 
 function getEnv(key: string, required = true): string {
@@ -46,7 +45,6 @@ const config: Config = {
     url: getEnv('WEB_URL'),
     secret: getEnv('WEB_SECRET'),
   },
-  redisUrl: getEnv('REDIS_URL', false) || undefined,
 };
 
 export default config;
