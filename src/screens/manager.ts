@@ -22,7 +22,7 @@ export function getScreen(id: string): ScreenDefinition | undefined {
   return screens.get(id);
 }
 
-// Função para navegar para uma tela (edita a mensagem se existir, senão envia)
+// Função para navegar para uma tela
 export async function goToScreen(ctx: Context, screenId: string, data?: any) {
   const screen = getScreen(screenId);
   if (!screen) {
@@ -32,30 +32,16 @@ export async function goToScreen(ctx: Context, screenId: string, data?: any) {
 
   const result = await screen.render(ctx, data);
 
-  // Se temos uma mensagem anterior para editar, editamos
   if (ctx.session.messageIdToEdit && ctx.session.chatId) {
     try {
-      if (result.imageUrl) {
-        // Se houver imagem, enviamos como mídia (mais complexo, por enquanto só texto)
-        // Para simplificar, editamos a legenda se for mídia; se for texto, editamos normalmente.
-        await ctx.telegram.editMessageText(
-          ctx.session.chatId,
-          ctx.session.messageIdToEdit,
-          undefined,
-          result.text,
-          result.keyboard ? { reply_markup: result.keyboard } : undefined
-        );
-      } else {
-        await ctx.telegram.editMessageText(
-          ctx.session.chatId,
-          ctx.session.messageIdToEdit,
-          undefined,
-          result.text,
-          result.keyboard ? { reply_markup: result.keyboard } : undefined
-        );
-      }
+      await ctx.telegram.editMessageText(
+        ctx.session.chatId,
+        ctx.session.messageIdToEdit,
+        undefined,
+        result.text,
+        result.keyboard ? { reply_markup: result.keyboard } : undefined
+      );
     } catch (error: any) {
-      // Se a edição falhar (ex: mensagem original deletada), envia nova
       if (error.response?.error_code === 400) {
         const sent = await ctx.reply(result.text, result.keyboard ? { reply_markup: result.keyboard } : {});
         if (sent.message_id) {
@@ -67,7 +53,6 @@ export async function goToScreen(ctx: Context, screenId: string, data?: any) {
       }
     }
   } else {
-    // Não há mensagem para editar, envia nova e armazena ID
     const sent = await ctx.reply(result.text, result.keyboard ? { reply_markup: result.keyboard } : {});
     if (sent.message_id) {
       ctx.session.messageIdToEdit = sent.message_id;
@@ -75,7 +60,6 @@ export async function goToScreen(ctx: Context, screenId: string, data?: any) {
     }
   }
 
-  // Atualiza tela atual/anterior
   ctx.session.previousScreen = ctx.session.currentScreen;
   ctx.session.currentScreen = screenId;
   ctx.session.data = data || {};
@@ -87,35 +71,40 @@ export async function goBack(ctx: Context) {
   if (previous) {
     await goToScreen(ctx, previous, ctx.session.data);
   } else {
-    // Volta para o início
     await goToScreen(ctx, 'start');
   }
 }
 
 // Middleware para injetar helpers no contexto
 export function attachScreenManager(ctx: Context, next: () => Promise<void>) {
-  ctx.session = ctx.session || {
-    data: {},
-  };
+  ctx.session = ctx.session || { data: {} };
   ctx.goToScreen = (screenId, data) => goToScreen(ctx, screenId, data);
   ctx.goBack = () => goBack(ctx);
-  ctx.editMessage = async (text, extra, options) => {
-    if (ctx.session.messageIdToEdit && ctx.session.chatId) {
-      try {
-        await ctx.telegram.editMessageText(
-          ctx.session.chatId,
-          ctx.session.messageIdToEdit,
-          undefined,
-          text,
-          extra
-        );
-        return true;
-      } catch {
-        // fallback: envia nova
-        return false;
-      }
-    }
-    return false;
-  };
   return next();
 }
+
+// ==========================
+// REGISTRO DA TELA ADMIN_START
+// ==========================
+registerScreen({
+  id: 'admin_start',
+  render: async (ctx: Context) => {
+    const userId = ctx.from!.id;
+    const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
+    if (!user || user.role === 'USER') {
+      return { text: 'Acesso negado.' };
+    }
+
+    return {
+      text: `Painel Admin\n\nBem-vindo, ${user.username || 'Admin'}!`,
+      keyboard: {
+        inline_keyboard: [
+          [{ text: '📊 Dashboard', callback_data: 'admin_dashboard' }],
+          [{ text: '⚙️ Configurações', callback_data: 'admin_menu_config' }],
+          [{ text: '📦 Produtos', callback_data: 'admin_config_products' }],
+          [{ text: '👥 Usuários', callback_data: 'admin_config_users' }],
+        ],
+      },
+    };
+  },
+});
