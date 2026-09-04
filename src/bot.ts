@@ -22,6 +22,7 @@ import { showAffiliatePoints, convertPointsToBalance } from './flows/affiliatePo
 import { showNotificationTemplateMenu, viewNotificationTemplate, editNotificationTemplate, resetNotificationTemplate } from './admin/notificationTemplates';
 import { handleActivateCoupon, handleRedeemCoupon, handleResgatarCommand } from './flows/promotions';
 import { showPromotionsMenu, createScheduledPromotion, createCouponPromotion, finalizeScheduledPromotion, listPromotions } from './admin/promotions';
+import { showRateLimitConfig, editRateLimitConfig } from './admin/rateLimitConfig';
 
 const bot = new Telegraf<Context>(config.botToken);
 
@@ -184,6 +185,20 @@ bot.action(/^redeem_coupon_(.+)$/, async (ctx) => {
 });
 
 // ==========================
+// CALLBACKS DE RATE LIMIT CONFIG (ADMIN)
+// ==========================
+bot.action('admin_actions_ratelimit', async (ctx) => {
+  await ctx.answerCbQuery();
+  await showRateLimitConfig(ctx);
+});
+
+bot.action(/^ratelimit_edit_(.+)$/, async (ctx) => {
+  const action = ctx.match[1];
+  await ctx.answerCbQuery();
+  await editRateLimitConfig(ctx, action);
+});
+
+// ==========================
 // CALLBACKS DINÂMICOS GERAIS
 // ==========================
 bot.action('menu_recarregar', async (ctx) => { await goToScreen(ctx, 'recarregar'); });
@@ -210,7 +225,8 @@ bot.action(/.*/, async (ctx) => {
     callbackData.startsWith('pixmanual_') ||
     callbackData.startsWith('admin_updates_') ||
     callbackData.startsWith('wa_af_') ||
-    callbackData.startsWith('promo_') // promoções admin
+    callbackData.startsWith('promo_') ||
+    callbackData.startsWith('ratelimit_')
   ) {
     await routeAdminCallback(ctx, callbackData);
   } else {
