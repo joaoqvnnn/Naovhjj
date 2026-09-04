@@ -31,12 +31,9 @@ import { showAtendimentoDireto } from './flows/atendimentoDireto';
 import { showSupportConfig, editSupportLink, editBotVersion, editStoreName } from './admin/supportConfig';
 import { showSobreConfig, editSobreContent } from './admin/sobreConfig';
 import { listProducts, createProduct, editProduct, editProductName, editProductPrice, editProductDescription, editProductImage, toggleProduct, deleteProduct, listCategories, createCategory, editCategoryName, deleteCategory } from './admin/productCategoryAdminFull';
-import { transcribeAudio } from './services/transcription';
-import { downloadMedia } from './utils/mediaDownload';
 
 const bot = new Telegraf<Context>(config.botToken);
 
-// Middlewares
 bot.use(sessionMiddleware);
 bot.use(blockedUserMiddleware);
 bot.use(maintenanceMiddleware);
@@ -84,9 +81,7 @@ bot.start(async (ctx) => {
   });
 });
 
-// ==========================
-// COMANDO /admin
-// ==========================
+// Comando admin
 bot.command('admin', async (ctx) => {
   const userId = ctx.from.id;
   const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) } });
@@ -97,7 +92,6 @@ bot.command('admin', async (ctx) => {
   }
 });
 
-// Comandos
 bot.command('pix', cmdPix);
 bot.command('historico', cmdHistorico);
 bot.command('alerta', cmdAlerta);
@@ -108,143 +102,136 @@ bot.command('id', cmdId);
 bot.command('afiliados', cmdAfiliados);
 bot.command('resgatar', handleResgatarCommand);
 
-// Inline query
 bot.on('inline_query', handleInlineQuery);
 
-// Callbacks do menu principal
+// ==========================
+// CALLBACKS DO MENU PRINCIPAL
+// ==========================
 bot.action('menu_comprar', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'comprar'); });
 bot.action('menu_perfil', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'perfil'); });
 bot.action('menu_recarregar', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'recarregar'); });
 bot.action('menu_afiliados', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'afiliados'); });
 bot.action('menu_ranking', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'ranking'); });
-bot.action('menu_sobre', async (ctx) => { await ctx.answerCbQuery(); await showSobre(ctx); });
+bot.action('menu_sobre', async (ctx) => {
+  await ctx.answerCbQuery();
+  const url = `${config.web.url}/web/sobre`;
+  await ctx.replyWithHTML(`ℹ️ <a href="${url}">Clique aqui para abrir a página Sobre</a>`, {
+    reply_markup: { inline_keyboard: [[{ text: '📄 Abrir página', url }]] },
+  });
+});
 
-// Atendimento
-bot.action('menu_suporte', handleAttendanceButton);
-bot.action('support_human', handleHumanButton);
-bot.action('support_exit', handleExitSupport);
-bot.action('menu_atendimento_direto', async (ctx) => { await ctx.answerCbQuery(); await showAtendimentoDireto(ctx); });
+// ==========================
+// CALLBACKS DE AÇÕES DO MENU
+// ==========================
+bot.action('pix_rapido', async (ctx) => {
+  const { startCapture } = await import('./middlewares/capture');
+  await startCapture(ctx, 'pix_valor', 'Digite o valor para recarregar:', {
+    validate: async (input) => {
+      const num = parseFloat(input.replace(',', '.'));
+      return isNaN(num) || num <= 0 ? 'Valor inválido.' : null;
+    },
+    onSuccess: async (ctx, value) => {
+      const { startPixPayment } = await import('./flows/pixPayment');
+      await startPixPayment(ctx, parseFloat(value.replace(',', '.')));
+    },
+  });
+});
 
-// Rankings
+bot.action('menu_historico', async (ctx) => {
+  const userId = ctx.from!.id;
+  const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) }, include: { orders: { include: { product: true } } } });
+  if (!user || !user.orders.length) {
+    await ctx.editMessageText('📭 Você não tem compras.', {
+      reply_markup: { inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'menu_perfil' }]] },
+    });
+    return;
+  }
+
+  let text = '🛍 Histórico de Compras\n\n';
+  user.orders.slice(0, 10).forEach((order, i) => {
+    text += `${i + 1}. ${order.product.name} - R$ ${order.totalPrice} - ${order.status}\n`;
+  });
+
+  await ctx.editMessageText(text, {
+    reply_markup: { inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'menu_perfil' }]] },
+  });
+});
+
+bot.action('menu_giftcard', async (ctx) => {
+  const { startCapture } = await import('./middlewares/capture');
+  await startCapture(ctx, 'giftcard_code', 'Digite o código do Gift Card:', {
+    validate: async (input) => input.trim().length > 0 ? null : 'Código inválido.',
+    onSuccess: async (ctx, code) => {
+      const { processGiftCardRedemption } = await import('./flows/balanceOperations');
+      const result = await processGiftCardRedemption(ctx.from!.id, code.trim().toUpperCase());
+      await ctx.editMessageText(result.message);
+    },
+  });
+});
+
+bot.action('menu_alterar_dados', async (ctx) => {
+  await ctx.editMessageText('✏️ Alterar Dados\n\nSelecione o dado:', {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '📱 WhatsApp', callback_data: 'alterar_whatsapp' }],
+        [{ text: '⏮️ Voltar', callback_data: 'menu_perfil' }],
+      ],
+    },
+  });
+});
+
+bot.action('saque_menu', async (ctx) => {
+  await ctx.editMessageText('💸 Saque\n\nEscolha o método:', {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '💠 Pix', callback_data: 'saque_pix' }],
+        [{ text: '🏦 Transferência bancária', url: `${process.env.WEB_URL}/web/saque` }],
+        [{ text: '⏮️ Voltar', callback_data: 'menu_afiliados' }],
+      ],
+    },
+  });
+});
+
+bot.action('saque_historico', async (ctx) => {
+  const userId = ctx.from!.id;
+  const user = await prisma.user.findUnique({ where: { telegramId: BigInt(userId) }, include: { withdrawals: true } });
+  if (!user || !user.withdrawals.length) {
+    await ctx.editMessageText('📭 Você ainda não solicitou saques.', {
+      reply_markup: { inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'menu_afiliados' }]] },
+    });
+    return;
+  }
+
+  let text = '📊 Histórico de Saques\n\n';
+  user.withdrawals.forEach(w => {
+    text += `#${w.id} - R$ ${w.amount} - ${w.status} - ${w.createdAt.toLocaleDateString('pt-BR')}\n`;
+  });
+
+  await ctx.editMessageText(text, {
+    reply_markup: { inline_keyboard: [[{ text: '⏮️ Voltar', callback_data: 'menu_afiliados' }]] },
+  });
+});
+
+// ==========================
+// CALLBACKS DE RANKING
+// ==========================
 bot.action('rank_servicos', async (ctx) => { await showRanking(ctx, 'servicos'); });
 bot.action('rank_recargas', async (ctx) => { await showRanking(ctx, 'recargas'); });
 bot.action('rank_saldo', async (ctx) => { await showRanking(ctx, 'saldo'); });
 bot.action('rank_compras', async (ctx) => { await showRanking(ctx, 'compras'); });
 
-// Compra
-bot.action(/^comprar_(\d+)$/, async (ctx) => {
-  const productId = parseInt(ctx.match[1]);
-  await showProduct(ctx, productId);
-});
+// ==========================
+// CALLBACKS ADMIN (resumido)
+// ==========================
+bot.action('admin_dashboard', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'admin_dashboard'); });
+bot.action('admin_menu_config', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'admin_menu_config'); });
+bot.action('admin_menu_actions', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'admin_menu_actions'); });
+bot.action('admin_menu_transactions', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'admin_menu_transactions'); });
+bot.action('admin_menu_updates', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'admin_menu_updates'); });
 
-// Alertas
-bot.action(/^alert_toggle_(\d+)$/, async (ctx) => {
-  const productId = parseInt(ctx.match[1]);
-  await toggleAlert(ctx, productId);
-});
-
-bot.action(/^alerts_page_(\d+)$/, async (ctx) => {
-  const page = parseInt(ctx.match[1]);
-  ctx.session.data = { ...ctx.session.data, alertPage: page };
-  await showAlertsScreen(ctx, page);
-});
-
-// Alterar WhatsApp
-bot.action('alterar_whatsapp', async (ctx) => {
-  await ctx.answerCbQuery();
-  await startChangeWhatsApp(ctx);
-});
-
-// Entrega WhatsApp
-bot.action(/^entregar_whatsapp_(\d+)$/, async (ctx) => {
-  const orderId = parseInt(ctx.match[1]);
-  await startWhatsAppDelivery(ctx, orderId);
-});
-
-// Pontos
-bot.action('menu_pontos', async (ctx) => { await ctx.answerCbQuery(); await showAffiliatePoints(ctx); });
-bot.action('aff_convert_points', async (ctx) => { await ctx.answerCbQuery(); await convertPointsToBalance(ctx); });
-
-// Notificações admin
-bot.action('admin_actions_notifications', async (ctx) => { await ctx.answerCbQuery(); await showNotificationTemplateMenu(ctx); });
-bot.action(/^notiftpl_(.+)$/, async (ctx) => { const key = ctx.match[1]; await ctx.answerCbQuery(); await viewNotificationTemplate(ctx, key); });
-bot.action(/^notiftpledit_(.+)$/, async (ctx) => { const key = ctx.match[1]; await ctx.answerCbQuery(); await editNotificationTemplate(ctx, key); });
-bot.action(/^notiftplreset_(.+)$/, async (ctx) => { const key = ctx.match[1]; await ctx.answerCbQuery(); await resetNotificationTemplate(ctx, key); });
-
-// Promoções
-bot.action('promo_menu', async (ctx) => { await showPromotionsMenu(ctx); });
-bot.action('promo_new_scheduled', async (ctx) => { await createScheduledPromotion(ctx); });
-bot.action('promo_new_coupon', async (ctx) => { await createCouponPromotion(ctx); });
-bot.action('promo_list', async (ctx) => { await listPromotions(ctx); });
-bot.action(/^promo_segment_(.+)$/, async (ctx) => { const segment = ctx.match[1]; await finalizeScheduledPromotion(ctx, segment); });
-
-// Cupons
-bot.action(/^activate_coupon_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await handleActivateCoupon(ctx, id); });
-bot.action(/^copy_coupon_(.+)$/, async (ctx) => { await ctx.answerCbQuery('Código copiado!'); });
-bot.action(/^redeem_coupon_(.+)$/, async (ctx) => { const code = ctx.match[1]; await handleRedeemCoupon(ctx, code); });
-
-// Rate limit
-bot.action('admin_actions_ratelimit', async (ctx) => { await ctx.answerCbQuery(); await showRateLimitConfig(ctx); });
-bot.action(/^ratelimit_edit_(.+)$/, async (ctx) => { const action = ctx.match[1]; await ctx.answerCbQuery(); await editRateLimitConfig(ctx, action); });
-
-// Menu admin pessoal
-bot.action('admin_start', async (ctx) => { await ctx.answerCbQuery(); await goToScreen(ctx, 'admin_start'); });
-bot.action('admin_rent_bot', async (ctx) => { await ctx.answerCbQuery(); await showRentBot(ctx); });
-bot.action('menu_pesquisar', async (ctx) => { await ctx.answerCbQuery(); await ctx.reply('Use @larizinhastorebot seguido do nome do serviço para pesquisar.'); });
-
-// Gerenciamento de usuários
-bot.action('admin_config_users', async (ctx) => { await ctx.answerCbQuery(); await showUsersMenu(ctx); });
-bot.action('users_menu', async (ctx) => { await ctx.answerCbQuery(); await showUsersMenu(ctx); });
-bot.action('users_list', async (ctx) => { await ctx.answerCbQuery(); await listUsers(ctx); });
-bot.action(/^users_page_(\d+)$/, async (ctx) => { const page = parseInt(ctx.match[1]); await listUsers(ctx, page); });
-bot.action('users_search', async (ctx) => {
-  const { startCapture } = await import('./middlewares/capture');
-  await startCapture(ctx, 'users_search_term', 'Digite o ID, Telegram ID ou username:', {
-    validate: async (input) => input.trim().length > 0 ? null : 'Digite algo.',
-    onSuccess: async (ctx, term) => searchUser(ctx, term),
-  });
-});
-bot.action(/^user_edit_balance_(\d+)$/, async (ctx) => { const userId = parseInt(ctx.match[1]); await editUserBalance(ctx, userId); });
-bot.action(/^user_toggle_block_(\d+)$/, async (ctx) => { const userId = parseInt(ctx.match[1]); await toggleUserBlock(ctx, userId); });
-bot.action(/^user_message_(\d+)$/, async (ctx) => { const userId = parseInt(ctx.match[1]); await sendMessageToUser(ctx, userId); });
-bot.action(/^user_pdf_(\d+)$/, async (ctx) => { const userId = parseInt(ctx.match[1]); await generateUserHistoryPdf(ctx, userId); });
-
-// Suporte e Sobre
-bot.action('admin_config_support', async (ctx) => { await ctx.answerCbQuery(); await showSupportConfig(ctx); });
-bot.action('support_edit_link', async (ctx) => { await ctx.answerCbQuery(); await editSupportLink(ctx); });
-bot.action('support_edit_version', async (ctx) => { await ctx.answerCbQuery(); await editBotVersion(ctx); });
-bot.action('support_edit_store', async (ctx) => { await ctx.answerCbQuery(); await editStoreName(ctx); });
-bot.action('admin_config_sobre', async (ctx) => { await ctx.answerCbQuery(); await showSobreConfig(ctx); });
-bot.action('sobre_edit', async (ctx) => { await ctx.answerCbQuery(); await editSobreContent(ctx); });
-
-// Produtos e Categorias
-bot.action('admin_config_products', async (ctx) => { await ctx.answerCbQuery(); await listProducts(ctx); });
-bot.action('prod_list', async (ctx) => { await ctx.answerCbQuery(); await listProducts(ctx); });
-bot.action(/^products_page_(\d+)$/, async (ctx) => { const page = parseInt(ctx.match[1]); await listProducts(ctx, page); });
-bot.action('prod_new', async (ctx) => { await ctx.answerCbQuery(); await createProduct(ctx); });
-bot.action(/^prod_edit_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await editProduct(ctx, id); });
-bot.action(/^prod_edit_name_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await editProductName(ctx, id); });
-bot.action(/^prod_edit_price_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await editProductPrice(ctx, id); });
-bot.action(/^prod_edit_desc_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await editProductDescription(ctx, id); });
-bot.action(/^prod_edit_image_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await editProductImage(ctx, id); });
-bot.action(/^prod_toggle_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await toggleProduct(ctx, id); });
-bot.action(/^prod_delete_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await deleteProduct(ctx, id); });
-bot.action('cat_menu', async (ctx) => { await ctx.answerCbQuery(); await listCategories(ctx); });
-bot.action('cat_new', async (ctx) => { await ctx.answerCbQuery(); await createCategory(ctx); });
-bot.action(/^cat_edit_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await editCategoryName(ctx, id); });
-bot.action(/^cat_delete_(\d+)$/, async (ctx) => { const id = parseInt(ctx.match[1]); await deleteCategory(ctx, id); });
-
-// Voltar
-bot.action('voltar_inicio', async (ctx) => { await goToScreen(ctx, 'start'); });
-bot.action('voltar_admin', async (ctx) => { await goToScreen(ctx, 'admin_dashboard'); });
-
-// Captura cancel
-bot.action('capture_cancel', async (ctx) => {
-  const { captureCancelCallback } = await import('./middlewares/capture');
-  await captureCancelCallback(ctx);
-});
-
-// Roteamento admin
+// ==========================
+// ROTEAMENTO ADMIN
+// ==========================
 bot.action(/.*/, async (ctx) => {
   const callbackData = ctx.callbackQuery.data;
   if (
@@ -281,47 +268,9 @@ bot.action(/.*/, async (ctx) => {
   }
 });
 
-// Áudio
-bot.on(['voice', 'audio'], async (ctx) => {
-  const userId = ctx.from?.id;
-  if (!userId) return;
-
-  const transcriptionSetting = await prisma.setting.findUnique({ where: { key: 'transcription_enabled' } });
-  if (!transcriptionSetting || !transcriptionSetting.value) {
-    await ctx.reply('Transcrição de áudio desativada.');
-    return;
-  }
-
-  const fileId = ctx.message.voice?.file_id || ctx.message.audio?.file_id;
-  if (!fileId) return;
-
-  try {
-    const fileUrl = await ctx.telegram.getFileLink(fileId);
-    const buffer = await downloadMedia(fileUrl.href);
-    if (!buffer) {
-      await ctx.reply('Não foi possível baixar o áudio.');
-      return;
-    }
-
-    const mime = ctx.message.voice ? 'audio/ogg' : ctx.message.audio?.mime_type || 'audio/ogg';
-    const text = await transcribeAudio(buffer, mime);
-    if (!text) {
-      await ctx.reply('Não foi possível transcrever o áudio.');
-      return;
-    }
-
-    if (ctx.session.data?.supportMode) {
-      await handleSupportMessage(ctx, text);
-    } else {
-      await handleNaturalLanguage(ctx, text);
-    }
-  } catch (error) {
-    console.error('Erro no processamento de áudio Telegram:', error);
-    await ctx.reply('Erro ao processar áudio.');
-  }
-});
-
-// Mensagens de texto
+// ==========================
+// CAPTURA DE MENSAGENS
+// ==========================
 bot.on('text', async (ctx) => {
   if (ctx.session.data?.supportMode && ctx.message && 'text' in ctx.message) {
     await handleSupportMessage(ctx, ctx.message.text);
@@ -332,7 +281,6 @@ bot.on('text', async (ctx) => {
   }
 });
 
-// Tratamento de erros
 bot.catch((err, ctx) => {
   console.error(`Erro para ${ctx.from?.id}:`, err);
   ctx.reply('Ocorreu um erro. Tente novamente.');
